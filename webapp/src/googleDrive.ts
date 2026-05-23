@@ -1,4 +1,5 @@
-import type { WorkspaceData } from "@/types";
+import { migrateWorkspace } from "@/migration";
+import type { CurrentUser, WorkspaceData } from "@/types";
 
 type TokenResponse = {
   access_token?: string;
@@ -27,7 +28,7 @@ declare global {
 }
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const GOOGLE_SCOPE = "openid email profile https://www.googleapis.com/auth/drive.file";
 const DRIVE_FIELDS = "id,name,modifiedTime,version,webViewLink";
 
 export type DriveFileMetadata = {
@@ -57,7 +58,7 @@ function loadScript(src: string) {
   });
 }
 
-export async function connectGoogleDrive(clientId: string) {
+export async function connectGoogle(clientId: string) {
   const trimmed = clientId.trim();
   if (!trimmed) throw new Error("צריך להזין Google OAuth Client ID.");
   await loadScript(GIS_SRC);
@@ -66,7 +67,7 @@ export async function connectGoogleDrive(clientId: string) {
   return new Promise<string>((resolve, reject) => {
     tokenClient = window.google!.accounts.oauth2.initTokenClient({
       client_id: trimmed,
-      scope: DRIVE_SCOPE,
+      scope: GOOGLE_SCOPE,
       callback: (response) => {
         if (response.error || !response.access_token) {
           reject(new Error(response.error ?? "Google authorization failed."));
@@ -80,8 +81,24 @@ export async function connectGoogleDrive(clientId: string) {
   });
 }
 
+export const connectGoogleDrive = connectGoogle;
+
 export function hasDriveToken() {
   return Boolean(accessToken);
+}
+
+export async function getCurrentGoogleUser(): Promise<CurrentUser> {
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: authHeaders()
+  });
+  if (!response.ok) throw new Error("לא ניתן לקרוא את פרטי המשתמש מ-Google.");
+  const profile = (await response.json()) as { email?: string; name?: string; picture?: string };
+  if (!profile.email) throw new Error("חשבון Google לא החזיר כתובת מייל.");
+  return {
+    email: profile.email.toLowerCase(),
+    name: profile.name ?? profile.email,
+    picture: profile.picture
+  };
 }
 
 function authHeaders(extra?: HeadersInit) {
@@ -151,7 +168,7 @@ export async function loadWorkspaceFromDrive(fileId: string): Promise<{ data: Wo
     headers: authHeaders()
   });
   if (!response.ok) throw new Error("טעינת קובץ השיבוץ מ-Drive נכשלה.");
-  const data = (await response.json()) as WorkspaceData;
+  const data = migrateWorkspace(await response.json());
   return { data, metadata };
 }
 

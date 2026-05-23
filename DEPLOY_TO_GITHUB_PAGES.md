@@ -63,7 +63,7 @@ In the scheduler:
 
 It will open as a standalone Chrome app window from a desktop/start-menu icon.
 
-## 5. Configure Google Drive sync
+## 5. Configure Google login and Drive sync
 
 Create a Google OAuth Web Client ID in Google Cloud Console and add this authorized JavaScript origin:
 
@@ -71,12 +71,16 @@ Create a Google OAuth Web Client ID in Google Cloud Console and add this authori
 https://YOUR_USERNAME.github.io
 ```
 
-Then paste the Client ID into the app's **Drive Sync** tab.
+Then paste the Client ID into the app login bar and connect with Google.
+
+The first signed-in Google user can click the bootstrap button to become the initial **senior planner**. After that, the senior planner adds residents, seniors, and the chief resident by Google email inside **רופאים ומשתמשים**.
 
 Use **צור קובץ** to create the shared `department-shift-scheduler.json` file, or **פתח** to open an existing Drive file by URL/ID.
 
 ## Notes
 
 - The app data lives in browser storage plus the visible shared Google Drive JSON file.
+- User roles are practical app-level permissions based on Google email. They are not backend-grade security rules.
+- Every meaningful edit is written to the app audit log with user, time, device, before, and after data.
 - GitHub Pages hosts only static app files. It does not see schedule data.
 - Google Calendar sync is currently dry-run/mock-ready in the app and can be wired to real Calendar writes later.

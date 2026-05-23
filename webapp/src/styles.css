@@ -149,6 +149,7 @@ textarea {
 
 .notice,
 .panel,
+.login-strip,
 .sheet-dashboard {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -157,6 +158,24 @@ textarea {
   margin: 0 auto 14px;
   max-width: 1760px;
   padding: 16px;
+}
+
+.login-strip {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 0.6fr) auto auto;
+}
+
+.login-strip div {
+  display: grid;
+  gap: 3px;
+}
+
+.login-strip span,
+.hint {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .toolbar {
@@ -184,6 +203,12 @@ textarea {
 .form-row input,
 .form-row select {
   min-width: 190px;
+}
+
+.form-row.stacked {
+  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr;
 }
 
 .two {
@@ -397,6 +422,32 @@ textarea {
   color: var(--muted);
 }
 
+.list-row.tall {
+  align-items: start;
+}
+
+.list-row.tall span {
+  display: grid;
+  gap: 4px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.readonly-chip {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
 .issue-row {
   align-items: center;
   display: grid;
@@ -439,6 +490,34 @@ textarea {
   text-align: left;
 }
 
+.audit-list {
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+}
+
+.audit-row {
+  align-items: stretch;
+  grid-template-columns: minmax(260px, 0.45fr) minmax(0, 1fr);
+}
+
+.audit-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.audit-row code {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  direction: ltr;
+  display: block;
+  max-height: 150px;
+  overflow: auto;
+  padding: 8px;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
 .check {
   align-items: center;
   display: inline-flex;
@@ -447,6 +526,7 @@ textarea {
 
 @media (max-width: 950px) {
   .topbar,
+  .login-strip,
   .two {
     grid-template-columns: 1fr;
   }

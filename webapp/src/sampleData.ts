@@ -62,7 +62,7 @@ export function createSampleWorkspace(): WorkspaceData {
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     workspace: {
       name: "שיבוץ מחלקתי",
       timezone: "Asia/Jerusalem",
@@ -70,9 +70,12 @@ export function createSampleWorkspace(): WorkspaceData {
     },
     roles,
     doctors,
+    users: [],
     schedules: {
       [schedule.key]: schedule
     },
+    changeRequests: [],
+    auditLog: [],
     calendar: {
       calendarInput: "",
       calendarId: "",
@@ -84,7 +87,9 @@ export function createSampleWorkspace(): WorkspaceData {
       fileName: "department-shift-scheduler.json",
       fileUrl: null,
       lastLoadedModifiedTime: null,
-      lastSavedModifiedTime: null
+      lastSavedModifiedTime: null,
+      lastLoadedVersion: null,
+      lastSavedVersion: null
     },
     updatedAt: new Date().toISOString()
   };

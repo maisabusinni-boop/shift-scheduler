@@ -1,8 +1,10 @@
 import { createSampleWorkspace } from "@/sampleData";
+import { migrateWorkspace } from "@/migration";
 import type { WorkspaceData } from "@/types";
 
 const STORAGE_KEY = "department-shift-scheduler.workspace";
 const CLIENT_ID_KEY = "department-shift-scheduler.google-client-id";
+const DEVICE_ID_KEY = "department-shift-scheduler.device-id";
 
 export function loadLocalWorkspace(): WorkspaceData {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -12,8 +14,8 @@ export function loadLocalWorkspace(): WorkspaceData {
     return sample;
   }
   try {
-    const parsed = JSON.parse(raw) as WorkspaceData;
-    if (parsed.schemaVersion !== 1) throw new Error("Unsupported schema");
+    const parsed = migrateWorkspace(JSON.parse(raw));
+    if (JSON.stringify(parsed) !== raw) saveLocalWorkspace(parsed);
     return parsed;
   } catch {
     const sample = createSampleWorkspace();
@@ -32,6 +34,14 @@ export function loadGoogleClientId() {
 
 export function saveGoogleClientId(clientId: string) {
   localStorage.setItem(CLIENT_ID_KEY, clientId.trim());
+}
+
+export function loadDeviceId() {
+  const existing = localStorage.getItem(DEVICE_ID_KEY);
+  if (existing) return existing;
+  const deviceId = `device-${crypto.randomUUID()}`;
+  localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  return deviceId;
 }
 
 export function downloadJson(data: WorkspaceData) {

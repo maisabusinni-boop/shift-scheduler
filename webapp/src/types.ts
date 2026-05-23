@@ -1,4 +1,5 @@
 export type DoctorGroup = "resident" | "senior";
+export type AppRole = "resident" | "senior" | "chief-resident" | "senior-planner";
 
 export type EligibilityRule =
   | "resident-only"
@@ -36,6 +37,22 @@ export type Doctor = {
   active: boolean;
 };
 
+export type AppUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: AppRole;
+  doctorId: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type CurrentUser = {
+  email: string;
+  name: string;
+  picture?: string;
+};
+
 export type Assignment = {
   doctorId: string | null;
   pending: boolean;
@@ -47,6 +64,31 @@ export type Exclusion = {
   date: string;
   roleCode: RoleCode | null;
   reason: string;
+  createdBy?: string;
+  createdAt?: string;
+};
+
+export type ChangeRequestStatus = "submitted" | "senior-confirmed" | "approved" | "rejected" | "applied";
+
+export type ChangeRequest = {
+  id: string;
+  scheduleKey: string;
+  requesterDoctorId: string;
+  requesterUserId: string | null;
+  requesterRole: AppRole;
+  date: string;
+  roleCode: RoleCode;
+  currentDoctorId: string | null;
+  proposedDoctorId: string | null;
+  reason: string;
+  status: ChangeRequestStatus;
+  resolutionNote: string;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  appliedAt: string | null;
+  appliedByUserId: string | null;
 };
 
 export type ValidationIssue = {
@@ -72,6 +114,38 @@ export type PublishSnapshot = {
   assignments: Record<string, Assignment>;
 };
 
+export type AuditEntityType =
+  | "assignment"
+  | "exclusion"
+  | "doctor"
+  | "user"
+  | "schedule"
+  | "request"
+  | "drive"
+  | "calendar"
+  | "settings";
+
+export type AuditEntry = {
+  id: string;
+  timestamp: string;
+  displayTime: string;
+  actorEmail: string;
+  actorName: string;
+  actorUserId: string | null;
+  actorRole: AppRole | "unrecognized";
+  action: string;
+  entityType: AuditEntityType;
+  entityId: string;
+  scheduleKey?: string;
+  date?: string;
+  roleCode?: RoleCode;
+  before: unknown;
+  after: unknown;
+  deviceId: string;
+  driveVersion?: string | null;
+  driveModifiedTime?: string | null;
+};
+
 export type MonthSchedule = {
   key: string;
   year: number;
@@ -94,10 +168,12 @@ export type DriveSyncState = {
   fileUrl: string | null;
   lastLoadedModifiedTime: string | null;
   lastSavedModifiedTime: string | null;
+  lastLoadedVersion?: string | null;
+  lastSavedVersion?: string | null;
 };
 
 export type WorkspaceData = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   workspace: {
     name: string;
     timezone: string;
@@ -105,7 +181,10 @@ export type WorkspaceData = {
   };
   roles: Role[];
   doctors: Doctor[];
+  users: AppUser[];
   schedules: Record<string, MonthSchedule>;
+  changeRequests: ChangeRequest[];
+  auditLog: AuditEntry[];
   calendar: {
     calendarInput: string;
     calendarId: string;
