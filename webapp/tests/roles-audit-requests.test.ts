@@ -41,6 +41,13 @@ describe("Google role resolution", () => {
     expect(session.status).toBe("bootstrap");
     expect(session.role).toBe("senior-planner");
   });
+
+  it("blocks unknown users when an active planner already exists", () => {
+    const data = createSampleWorkspace();
+    data.users.push(createBootstrapPlanner({ email: "other@example.com", name: "Other Planner" }));
+    const session = resolveSession(data, googleUser);
+    expect(session.status).toBe("blocked");
+  });
 });
 
 describe("permissions", () => {

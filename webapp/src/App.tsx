@@ -223,6 +223,30 @@ export function App() {
     });
   }
 
+  function recoverLocalPlanner() {
+    if (session.status !== "blocked") return;
+    const confirmed = window.confirm("פעולת שחזור מקומית: החשבון המחובר יהפוך למתכנן בכיר בדפדפן הזה. להשתמש בזה רק אם נתקעת בשלב ההקמה?");
+    if (!confirmed) return;
+    commitChange({
+      mutator: (draft) => {
+        const before = draft.users;
+        const user = createBootstrapPlanner(session.googleUser);
+        draft.users = [
+          user,
+          ...draft.users.map((candidate) => (candidate.role === "senior-planner" ? { ...candidate, active: false } : candidate))
+        ];
+        return {
+          action: "local-planner-recovery",
+          entityType: "user",
+          entityId: user.id,
+          before,
+          after: draft.users
+        };
+      },
+      note: "שחזור מקומי הושלם. החשבון המחובר הוגדר כמתכנן בכיר."
+    });
+  }
+
   function updateAssignment(date: string, roleCode: RoleCode, value: string) {
     if (!canEditRoster(role, schedule)) {
       setMessage("רק צ׳יף או מתכנן בכיר יכולים לערוך טיוטת שיבוץ.");
@@ -578,7 +602,7 @@ export function App() {
         busy={busy}
       />
 
-      {session.status === "blocked" ? <BlockedUser email={session.googleUser.email} /> : null}
+      {session.status === "blocked" ? <BlockedUser email={session.googleUser.email} recover={recoverLocalPlanner} /> : null}
       {message ? <div className="notice">{message}</div> : null}
 
       {role ? (
@@ -749,8 +773,15 @@ function LoginBar({
   );
 }
 
-function BlockedUser({ email }: { email: string }) {
-  return <section className="panel"><h2>אין הרשאה</h2><p>החשבון {email} לא נמצא ברשימת המשתמשים. פנה למתכנן הבכיר כדי שיוסיף אותך.</p></section>;
+function BlockedUser({ email, recover }: { email: string; recover: () => void }) {
+  return (
+    <section className="panel">
+      <h2>אין הרשאה</h2>
+      <p>החשבון {email} לא נמצא ברשימת המשתמשים. פנה למתכנן הבכיר כדי שיוסיף אותך.</p>
+      <p className="hint">אם זו ההקמה הראשונה ונתקעת בגלל נתונים מקומיים ישנים, אפשר לבצע שחזור מקומי.</p>
+      <button className="primary" onClick={recover}>שחזור מקומי והגדרה כמתכנן בכיר</button>
+    </section>
+  );
 }
 
 function LockedPanel({ title, text }: { title: string; text: string }) {
