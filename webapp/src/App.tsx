@@ -7,13 +7,13 @@ import {
   FileWarning,
   FolderOpen,
   History,
-  LayoutDashboard,
-  ListChecks,
+  Mail,
   Plus,
   RefreshCw,
   Save,
   Settings,
   Table2,
+  Trash2,
   Upload,
   UserCheck,
   Users
@@ -42,12 +42,10 @@ import {
   canManageUsers,
   canPublish,
   canReviewRequests,
-  canSeeFullAudit,
   canSeeSchedule,
   canUsePlannerTools,
   isOwnDoctor
 } from "@/permissions";
-import { getInstallPrompt, isStandaloneMode, subscribeInstallPrompt } from "@/pwaInstall";
 import { createChangeRequest, nextRequestStatusForDecision } from "@/requests";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import {
@@ -75,15 +73,13 @@ import type {
 import { validateSchedule } from "@/validation";
 import "./styles.css";
 
-type TabId = "dashboard" | "roster" | "exclusions" | "requests" | "doctors" | "review" | "audit" | "drive" | "calendar" | "settings";
+type TabId = "roster" | "exclusions" | "requests" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean }> = [
-  { id: "dashboard", label: "לוח בקרה", icon: LayoutDashboard },
   { id: "roster", label: "שיבוץ", icon: Table2, scheduleEditor: true },
   { id: "exclusions", label: "אילוצים", icon: FileWarning },
   { id: "requests", label: "שינוי תורנות", icon: UserCheck },
   { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
-  { id: "review", label: "בדיקה ופרסום", icon: ListChecks, scheduleEditor: true },
   { id: "audit", label: "יומן פעולות", icon: History, audit: true },
   { id: "drive", label: "Drive Sync", icon: Cloud, plannerOnly: true },
   { id: "calendar", label: "יומן Google", icon: CalendarCheck, plannerOnly: true },
@@ -103,19 +99,21 @@ export function App() {
   const [data, setData] = useState<WorkspaceData>(() => loadLocalWorkspace());
   const [year, setYear] = useState(current.getFullYear());
   const [month, setMonth] = useState(current.getMonth() + 1);
-  const [tab, setTab] = useState<TabId>("dashboard");
+  const [tab, setTab] = useState<TabId>("roster");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [focusCell, setFocusCell] = useState<string | null>(null);
   const [clientId, setClientId] = useState(() => loadGoogleClientId());
   const [driveFileInput, setDriveFileInput] = useState("");
   const [calendarInput, setCalendarInput] = useState(data.calendar.calendarInput);
-  const [installAvailable, setInstallAvailable] = useState(() => Boolean(getInstallPrompt()));
   const [googleUser, setGoogleUser] = useState<CurrentUser | null>(null);
   const [deviceId] = useState(() => loadDeviceId());
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
-  const [userForm, setUserForm] = useState({ email: "", name: "", role: "resident" as AppRole, doctorId: "" });
-  const [exclusionForm, setExclusionForm] = useState({ doctorId: "", roleCode: "", reason: "" });
+  const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
+  const [doctorEmailDrafts, setDoctorEmailDrafts] = useState<Record<string, string>>({});
+  const [doctorRoleDrafts, setDoctorRoleDrafts] = useState<Record<string, AppRole>>({});
+  const [exclusionForm, setExclusionForm] = useState({ doctorId: "", reason: "" });
+  const [exclusionRoleCodes, setExclusionRoleCodes] = useState<RoleCode[]>([ROLE_CODES.RESIDENT_ON_CALL]);
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
@@ -129,7 +127,6 @@ export function App() {
   const appUser = session.status === "recognized" ? session.appUser : null;
   const sessionDoctor = session.status === "recognized" ? session.doctor : null;
   const visibleTabs = useMemo(() => tabs.filter((item) => canSeeTab(item, role)), [role]);
-  const doctorById = useMemo(() => new Map(workspace.doctors.map((doctor) => [doctor.id, doctor])), [workspace.doctors]);
 
   useEffect(() => {
     if (workspace !== data) {
@@ -138,12 +135,8 @@ export function App() {
   }, [workspace, data]);
 
   useEffect(() => {
-    return subscribeInstallPrompt(() => setInstallAvailable(Boolean(getInstallPrompt())));
-  }, []);
-
-  useEffect(() => {
     if (!visibleTabs.some((item) => item.id === tab)) {
-      setTab(visibleTabs[0]?.id ?? "dashboard");
+      setTab(visibleTabs[0]?.id ?? "roster");
     }
   }, [tab, visibleTabs]);
 
@@ -202,7 +195,7 @@ export function App() {
     saveGoogleClientId(clientId);
     const profile = await getCurrentGoogleUser();
     setGoogleUser(profile);
-    setMessage(`מחובר כ-${profile.email}`);
+    setMessage("");
   }
 
   function bootstrapPlanner() {
@@ -257,8 +250,8 @@ export function App() {
         const assignment: Assignment = value === "__pending" || !value ? { doctorId: null, pending: value === "__pending" } : { doctorId: value, pending: false };
         const keys = [cellKey(date, roleCode)];
         const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-        if ((roleCode === ROLE_CODES.SENIOR_A || roleCode === ROLE_CODES.FRIDAY_MORNING_SENIOR) && weekday === 5) {
-          keys.push(cellKey(date, ROLE_CODES.SENIOR_A), cellKey(date, ROLE_CODES.FRIDAY_MORNING_SENIOR), cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR));
+        if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
+          keys.push(cellKey(date, ROLE_CODES.SENIOR_A), cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR));
         }
         const uniqueKeys = Array.from(new Set(keys));
         const before = Object.fromEntries(uniqueKeys.map((item) => [item, currentSchedule.assignments[item] ?? null]));
@@ -352,19 +345,22 @@ export function App() {
   function addExclusions() {
     if (!appUser || !canEditOwnRecords(role)) return setMessage("צריך להתחבר כדי להוסיף אילוצים.");
     const doctorId = canUsePlannerTools(role) ? exclusionForm.doctorId : appUser.doctorId ?? "";
-    if (!doctorId || !selectedDates.length) return setMessage("צריך לבחור תאריך אחד לפחות.");
+    const roleCodes = Array.from(new Set(exclusionRoleCodes.filter(Boolean)));
+    if (!doctorId || !selectedDates.length || !roleCodes.length) return setMessage("צריך לבחור רופא, תאריך ותפקיד אחד לפחות.");
     if (!canUsePlannerTools(role) && !isOwnDoctor(appUser, sessionDoctor, doctorId)) return setMessage("אפשר לערוך רק אילוצים שלך.");
     commitChange({
       mutator: (_draft, currentSchedule) => {
-        const created = selectedDates.map((date) => ({
-          id: createId("exclusion"),
-          doctorId,
-          date,
-          roleCode: (exclusionForm.roleCode || null) as RoleCode | null,
-          reason: exclusionForm.reason,
-          createdBy: appUser.id,
-          createdAt: new Date().toISOString()
-        }));
+        const created = selectedDates.flatMap((date) =>
+          roleCodes.map((roleCode) => ({
+            id: createId("exclusion"),
+            doctorId,
+            date,
+            roleCode,
+            reason: exclusionForm.reason,
+            createdBy: appUser.id,
+            createdAt: new Date().toISOString()
+          }))
+        );
         currentSchedule.exclusions.push(...created);
         currentSchedule.validation.stale = true;
         return {
@@ -379,7 +375,8 @@ export function App() {
       note: "האילוצים נוספו."
     });
     setSelectedDates([]);
-    setExclusionForm({ doctorId: canUsePlannerTools(role) ? "" : doctorId, roleCode: "", reason: "" });
+    setExclusionForm({ doctorId: canUsePlannerTools(role) ? "" : doctorId, reason: "" });
+    setExclusionRoleCodes([ROLE_CODES.RESIDENT_ON_CALL]);
   }
 
   function deleteExclusion(id: string) {
@@ -427,40 +424,79 @@ export function App() {
     });
   }
 
-  function addUser() {
+  function saveDoctorUser(doctorId: string) {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל משתמשים.");
-    if (!userForm.email.trim() || !userForm.name.trim()) return setMessage("צריך שם ומייל.");
+    const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
+    if (!doctor) return setMessage("הרופא לא נמצא.");
+    const existing = workspace.users.find((user) => user.doctorId === doctorId);
+    const email = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
+    const appRole = doctorRoleDrafts[doctorId] ?? existing?.role ?? (doctor.group === "senior" ? "senior" : "resident");
+    if (!email) return setMessage("צריך להזין Gmail לרופא.");
     commitChange({
       mutator: (draft) => {
-        const user: AppUser = {
+        const targetDoctor = draft.doctors.find((candidate) => candidate.id === doctorId);
+        if (!targetDoctor) return;
+        const user = draft.users.find((candidate) => candidate.doctorId === doctorId);
+        const before = user ? { ...user } : null;
+        if (user) {
+          user.email = email;
+          user.name = targetDoctor.name;
+          user.role = appRole;
+          user.doctorId = doctorId;
+          user.active = true;
+          return { action: "user-update-doctor-login", entityType: "user", entityId: user.id, before, after: user };
+        }
+        const created: AppUser = {
           id: createId("user"),
-          email: userForm.email.trim().toLowerCase(),
-          name: userForm.name.trim(),
-          role: userForm.role,
-          doctorId: userForm.doctorId || null,
+          email,
+          name: targetDoctor.name,
+          role: appRole,
+          doctorId,
           active: true,
           createdAt: new Date().toISOString()
         };
-        draft.users.push(user);
-        return { action: "user-create", entityType: "user", entityId: user.id, before: null, after: user };
+        draft.users.push(created);
+        return { action: "user-create-doctor-login", entityType: "user", entityId: created.id, before: null, after: created };
       },
-      note: "המשתמש נוסף."
+      note: "פרטי הכניסה נשמרו."
     });
-    setUserForm({ email: "", name: "", role: "resident", doctorId: "" });
   }
 
-  function toggleUser(userId: string) {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל משתמשים.");
+  function removeDoctor(doctorId: string) {
+    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל רופאים.");
+    const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
+    if (!doctor) return;
+    const confirmed = window.confirm(`להסיר את ${doctor.name}? השיבוצים והאילוצים שלו יימחקו מהנתונים המקומיים.`);
+    if (!confirmed) return;
     commitChange({
       mutator: (draft) => {
-        const user = draft.users.find((candidate) => candidate.id === userId);
-        if (!user) return;
-        const before = { ...user };
-        user.active = !user.active;
-        return { action: "user-toggle-active", entityType: "user", entityId: userId, before, after: user };
+        const before = {
+          doctor: draft.doctors.find((candidate) => candidate.id === doctorId) ?? null,
+          linkedUsers: draft.users.filter((user) => user.doctorId === doctorId),
+          schedules: Object.fromEntries(Object.entries(draft.schedules).map(([scheduleKey, item]) => [scheduleKey, {
+            assignments: Object.entries(item.assignments).filter(([, assignment]) => assignment.doctorId === doctorId).map(([key]) => key),
+            exclusions: item.exclusions.filter((exclusion) => exclusion.doctorId === doctorId).map((exclusion) => exclusion.id)
+          }]))
+        };
+        draft.doctors = draft.doctors.filter((candidate) => candidate.id !== doctorId);
+        draft.users = draft.users.map((user) => (user.doctorId === doctorId ? { ...user, doctorId: null, active: false } : user));
+        Object.values(draft.schedules).forEach((item) => {
+          Object.entries(item.assignments).forEach(([assignmentKey, assignment]) => {
+            if (assignment.doctorId === doctorId) item.assignments[assignmentKey] = { doctorId: null, pending: false };
+          });
+          item.exclusions = item.exclusions.filter((exclusion) => exclusion.doctorId !== doctorId);
+          item.validation.stale = true;
+        });
+        draft.changeRequests = draft.changeRequests.filter((request) => (
+          request.requesterDoctorId !== doctorId &&
+          request.currentDoctorId !== doctorId &&
+          request.proposedDoctorId !== doctorId
+        ));
+        return { action: "doctor-remove", entityType: "doctor", entityId: doctorId, before, after: null };
       },
-      note: "משתמש עודכן."
+      note: "הרופא הוסר."
     });
+    setExpandedDoctorId((current) => (current === doctorId ? null : current));
   }
 
   function submitRequest() {
@@ -619,30 +655,23 @@ export function App() {
             })}
           </nav>
 
-          {tab === "dashboard" && (
-            <Dashboard
-              schedule={schedule}
-              counts={counts}
-              driveName={workspace.driveSync.fileName}
-              role={role}
-              userName={session.googleUser?.name ?? ""}
-              validateCurrent={validateCurrent}
-              publishCurrent={publishCurrent}
-              unpublishCurrent={unpublishCurrent}
-              installAvailable={installAvailable}
-              installApp={async () => {
-                const prompt = getInstallPrompt();
-                if (!prompt) return setMessage("אם כפתור התקנה לא מופיע, פתח את תפריט Chrome ובחר Install app / Create shortcut.");
-                await prompt.prompt();
-                const choice = await prompt.userChoice;
-                setInstallAvailable(Boolean(getInstallPrompt()));
-                setMessage(choice.outcome === "accepted" ? "האפליקציה הותקנה כאייקון." : "ההתקנה בוטלה.");
-              }}
-            />
-          )}
           {tab === "roster" && (
             canViewActiveSchedule ? (
-              <Roster schedule={schedule} roles={workspace.roles} doctors={workspace.doctors} days={days} focusCell={focusCell} editable={canEditRoster(role, schedule)} updateAssignment={updateAssignment} />
+              <Roster
+                schedule={schedule}
+                roles={workspace.roles}
+                doctors={workspace.doctors}
+                days={days}
+                counts={counts}
+                role={role}
+                focusCell={focusCell}
+                editable={canEditRoster(role, schedule)}
+                validateCurrent={validateCurrent}
+                publishCurrent={publishCurrent}
+                unpublishCurrent={unpublishCurrent}
+                updateAssignment={updateAssignment}
+                setFocusCell={setFocusCell}
+              />
             ) : (
               <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
             )
@@ -655,8 +684,10 @@ export function App() {
               roles={workspace.roles}
               days={days}
               form={{ ...exclusionForm, doctorId: canUsePlannerTools(role) ? exclusionForm.doctorId : ownDoctorId }}
+              roleCodes={exclusionRoleCodes}
               canChooseDoctor={canUsePlannerTools(role)}
               setForm={setExclusionForm}
+              setRoleCodes={setExclusionRoleCodes}
               selectedDates={selectedDates}
               setSelectedDates={setSelectedDates}
               addExclusions={addExclusions}
@@ -685,16 +716,19 @@ export function App() {
               data={workspace}
               form={doctorForm}
               setForm={setDoctorForm}
-              userForm={userForm}
-              setUserForm={setUserForm}
+              expandedDoctorId={expandedDoctorId}
+              setExpandedDoctorId={setExpandedDoctorId}
+              emailDrafts={doctorEmailDrafts}
+              setEmailDrafts={setDoctorEmailDrafts}
+              roleDrafts={doctorRoleDrafts}
+              setRoleDrafts={setDoctorRoleDrafts}
               addDoctor={addDoctor}
               toggleDoctor={toggleDoctor}
-              addUser={addUser}
-              toggleUser={toggleUser}
+              saveDoctorUser={saveDoctorUser}
+              removeDoctor={removeDoctor}
             />
           )}
-          {tab === "review" && <Review schedule={schedule} counts={counts} validateCurrent={validateCurrent} publishCurrent={publishCurrent} canPublish={canPublish(role)} setFocusCell={(cell) => { setFocusCell(cell); setTab("roster"); }} />}
-          {tab === "audit" && <AuditPanel entries={workspace.auditLog} full={canSeeFullAudit(role)} appUser={appUser} />}
+          {tab === "audit" && <AuditPanel entries={workspace.auditLog} doctors={workspace.doctors} roles={workspace.roles} />}
           {tab === "drive" && (
             <DrivePanel
               data={workspace}
@@ -738,7 +772,7 @@ export function App() {
 function canSeeTab(item: (typeof tabs)[number], role: AppRole | null) {
   if (!role) return false;
   if (item.plannerOnly) return canUsePlannerTools(role);
-  if (item.scheduleEditor) return role === "senior-planner" || role === "chief-resident";
+  if (item.scheduleEditor) return true;
   if (item.requestReviewer) return canReviewRequests(role);
   if (item.audit) return role === "senior-planner" || role === "chief-resident";
   return true;
@@ -788,55 +822,6 @@ function LockedPanel({ title, text }: { title: string; text: string }) {
   return <section className="panel"><h2>{title}</h2><p>{text}</p></section>;
 }
 
-function Dashboard({
-  schedule,
-  counts,
-  driveName,
-  role,
-  userName,
-  validateCurrent,
-  publishCurrent,
-  unpublishCurrent,
-  installAvailable,
-  installApp
-}: {
-  schedule: MonthSchedule;
-  counts: { assigned: number; pending: number; errors: number; warnings: number };
-  driveName: string;
-  role: AppRole;
-  userName: string;
-  validateCurrent: () => void;
-  publishCurrent: () => void;
-  unpublishCurrent: () => void;
-  installAvailable: boolean;
-  installApp: () => Promise<void>;
-}) {
-  return (
-    <section className="sheet-dashboard">
-      <div className="dashboard-title">Dashboard</div>
-      <div className="status-grid">
-        <InfoCell label="משתמש" value={userName || "מחובר"} />
-        <InfoCell label="תפקיד" value={roleLabels[role]} />
-        <InfoCell label="חודש פעיל" value={schedule.key} />
-        <InfoCell label="סטטוס" value={schedule.status === "published" ? "פורסם" : "טיוטה"} tone={schedule.status === "published" ? "good" : "warn"} />
-        <InfoCell label="בדיקה" value={schedule.validation.stale ? "צריך בדיקה" : "נבדק"} tone={schedule.validation.stale ? "warn" : "good"} />
-        <InfoCell label="קובץ Drive" value={driveName} />
-        <InfoCell label="שגיאות" value={String(counts.errors)} tone={counts.errors ? "bad" : "good"} />
-        <InfoCell label="אזהרות" value={String(counts.warnings)} tone={counts.warnings ? "warn" : "good"} />
-        <InfoCell label="שיבוצים" value={String(counts.assigned)} />
-        <InfoCell label="סנכרון יומן" value={schedule.lastSyncedAt ? new Date(schedule.lastSyncedAt).toLocaleString("he-IL") : "טרם סונכרן"} />
-        <InfoCell label="מצב אפליקציה" value={isStandaloneMode() ? "מותקן כאייקון" : installAvailable ? "מוכן להתקנה" : "פתוח בדפדפן"} tone={isStandaloneMode() ? "good" : installAvailable ? "warn" : undefined} />
-      </div>
-      <div className="action-map">
-        <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>בדוק וסמן בעיות</button>
-        <button onClick={publishCurrent} disabled={!canPublish(role)}>פרסם חודש</button>
-        <button onClick={unpublishCurrent} disabled={!canPublish(role)}>החזר לטיוטה</button>
-        <button onClick={installApp}>התקן כאייקון Chrome</button>
-      </div>
-    </section>
-  );
-}
-
 function InfoCell({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }) {
   return <div className={`info-cell ${tone ?? ""}`}><span>{label}</span><b>{value}</b></div>;
 }
@@ -846,22 +831,62 @@ function Roster({
   roles,
   doctors,
   days,
+  counts,
+  role,
   focusCell,
   editable,
+  validateCurrent,
+  publishCurrent,
+  unpublishCurrent,
+  setFocusCell,
   updateAssignment
 }: {
   schedule: MonthSchedule;
   roles: Role[];
   doctors: Doctor[];
   days: ReturnType<typeof buildMonthDays>;
+  counts: { assigned: number; pending: number; errors: number; warnings: number };
+  role: AppRole;
   focusCell: string | null;
   editable: boolean;
+  validateCurrent: () => void;
+  publishCurrent: () => void;
+  unpublishCurrent: () => void;
+  setFocusCell: (cell: string) => void;
   updateAssignment: (date: string, roleCode: RoleCode, value: string) => void;
 }) {
   const issueByCell = new Map(schedule.validation.issues.map((issue) => [issue.cellKey, issue.severity]));
   return (
     <section className="panel">
-      <div className="toolbar"><h2>שיבוץ חודשי</h2><span>{editable ? "מצב עריכה" : "קריאה בלבד"}</span></div>
+      <div className="toolbar roster-toolbar">
+        <div>
+          <h2>שיבוץ חודשי</h2>
+          <span>{editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
+        </div>
+        <div className="actions">
+          <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>בדוק</button>
+          <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>פרסם</button>
+          <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>החזר לטיוטה</button>
+        </div>
+      </div>
+      <div className="roster-summary">
+        <InfoCell label="שיבוצים" value={String(counts.assigned)} />
+        <InfoCell label="שגיאות" value={String(counts.errors)} tone={counts.errors ? "bad" : "good"} />
+        <InfoCell label="אזהרות" value={String(counts.warnings)} tone={counts.warnings ? "warn" : "good"} />
+        <InfoCell label="בדיקה" value={schedule.validation.stale ? "צריך בדיקה" : "נבדק"} tone={schedule.validation.stale ? "warn" : "good"} />
+        <InfoCell label="סנכרון יומן" value={schedule.lastSyncedAt ? new Date(schedule.lastSyncedAt).toLocaleString("he-IL") : "טרם סונכרן"} />
+      </div>
+      {schedule.validation.issues.length ? (
+        <div className="issue-strip">
+          {schedule.validation.issues.slice(0, 6).map((issue) => (
+            <button key={issue.id} className={`issue-pill ${issue.severity}`} onClick={() => issue.cellKey && setFocusCell(issue.cellKey)}>
+              <span>{issue.severity === "error" ? "שגיאה" : "אזהרה"}</span>
+              {issue.message}
+            </button>
+          ))}
+          {schedule.validation.issues.length > 6 ? <span className="hint">+{schedule.validation.issues.length - 6} נוספות</span> : null}
+        </div>
+      ) : null}
       <div className="board-wrap">
         <table className="roster-table">
           <thead><tr><th className="sticky-date">תאריך</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
@@ -902,8 +927,10 @@ function Exclusions({
   roles,
   days,
   form,
+  roleCodes,
   canChooseDoctor,
   setForm,
+  setRoleCodes,
   selectedDates,
   setSelectedDates,
   addExclusions,
@@ -914,9 +941,11 @@ function Exclusions({
   doctors: Doctor[];
   roles: Role[];
   days: ReturnType<typeof buildMonthDays>;
-  form: { doctorId: string; roleCode: string; reason: string };
+  form: { doctorId: string; reason: string };
+  roleCodes: RoleCode[];
   canChooseDoctor: boolean;
-  setForm: (value: { doctorId: string; roleCode: string; reason: string }) => void;
+  setForm: (value: { doctorId: string; reason: string }) => void;
+  setRoleCodes: (value: RoleCode[]) => void;
   selectedDates: string[];
   setSelectedDates: (dates: string[]) => void;
   addExclusions: () => void;
@@ -933,10 +962,17 @@ function Exclusions({
               {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
             </select>
           ) : <span className="readonly-chip">{doctors.find((doctor) => doctor.id === form.doctorId)?.name ?? "המשתמש לא מקושר לרופא"}</span>}
-          <select value={form.roleCode} onChange={(event) => setForm({ ...form, roleCode: event.target.value })}>
-            <option value="">כל היום</option>
-            {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
-          </select>
+          <div className="role-blockers">
+            {roleCodes.map((roleCode, index) => (
+              <div className="role-blocker" key={`${roleCode}-${index}`}>
+                <select value={roleCode} onChange={(event) => setRoleCodes(roleCodes.map((item, itemIndex) => itemIndex === index ? event.target.value as RoleCode : item))}>
+                  {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
+                </select>
+                {roleCodes.length > 1 ? <button aria-label="הסר תפקיד" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
+              </div>
+            ))}
+            <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />הוסף תפקיד</button>
+          </div>
           <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / הערה" />
         </div>
         <div className="month-picker">
@@ -950,7 +986,7 @@ function Exclusions({
         {exclusions.map((exclusion) => {
           const doctor = doctors.find((candidate) => candidate.id === exclusion.doctorId);
           const role = roles.find((candidate) => candidate.code === exclusion.roleCode);
-          return <div className="list-row" key={exclusion.id}><span>{doctor?.name ?? "רופא לא ידוע"} · {exclusion.date} · {role?.name ?? "כל היום"}{exclusion.reason ? <small> · {exclusion.reason}</small> : null}</span><button onClick={() => deleteExclusion(exclusion.id)}>מחק</button></div>;
+          return <div className="list-row" key={exclusion.id}><span>{doctor?.name ?? "רופא לא ידוע"} · {exclusion.date} · {role?.name ?? "תפקיד לא ידוע"}{exclusion.reason ? <small> · {exclusion.reason}</small> : null}</span><button onClick={() => deleteExclusion(exclusion.id)}>מחק</button></div>;
         })}
       </div>
     </section>
@@ -1043,67 +1079,100 @@ function Doctors({
   data,
   form,
   setForm,
-  userForm,
-  setUserForm,
+  expandedDoctorId,
+  setExpandedDoctorId,
+  emailDrafts,
+  setEmailDrafts,
+  roleDrafts,
+  setRoleDrafts,
   addDoctor,
   toggleDoctor,
-  addUser,
-  toggleUser
+  saveDoctorUser,
+  removeDoctor
 }: {
   data: WorkspaceData;
   form: { name: string; group: Doctor["group"]; canAngio: boolean };
   setForm: (value: { name: string; group: Doctor["group"]; canAngio: boolean }) => void;
-  userForm: { email: string; name: string; role: AppRole; doctorId: string };
-  setUserForm: (value: { email: string; name: string; role: AppRole; doctorId: string }) => void;
+  expandedDoctorId: string | null;
+  setExpandedDoctorId: (value: string | null) => void;
+  emailDrafts: Record<string, string>;
+  setEmailDrafts: (value: Record<string, string>) => void;
+  roleDrafts: Record<string, AppRole>;
+  setRoleDrafts: (value: Record<string, AppRole>) => void;
   addDoctor: () => void;
   toggleDoctor: (doctorId: string) => void;
-  addUser: () => void;
-  toggleUser: (userId: string) => void;
+  saveDoctorUser: (doctorId: string) => void;
+  removeDoctor: (doctorId: string) => void;
 }) {
   return (
-    <section className="panel two">
-      <div>
-        <h2>רופאים</h2>
-        <div className="form-row">
-          <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
-          <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
-          <label className="check"><input type="checkbox" checked={form.canAngio} onChange={(event) => setForm({ ...form, canAngio: event.target.checked })} />אנגיו</label>
-          <button className="primary" onClick={addDoctor}>הוסף</button>
-        </div>
-        <div className="list">{data.doctors.map((doctor) => <div className="list-row" key={doctor.id}><span>{doctor.name} · {doctor.group === "resident" ? "מתמחה" : "בכיר"} {doctor.canAngio ? "· אנגיו" : ""}</span><button onClick={() => toggleDoctor(doctor.id)}>{doctor.active ? "פעיל" : "לא פעיל"}</button></div>)}</div>
+    <section className="panel">
+      <div className="toolbar"><h2>רופאים</h2><span>{data.doctors.length} רשומות</span></div>
+      <div className="form-row doctor-add-row">
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
+        <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
+        <label className="check"><input type="checkbox" checked={form.canAngio} onChange={(event) => setForm({ ...form, canAngio: event.target.checked })} />אנגיו</label>
+        <button className="primary" onClick={addDoctor}>הוסף</button>
       </div>
-      <div>
-        <h2>משתמשים והרשאות</h2>
-        <div className="form-row stacked">
-          <input dir="ltr" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} placeholder="email@hospital.org" />
-          <input value={userForm.name} onChange={(event) => setUserForm({ ...userForm, name: event.target.value })} placeholder="שם משתמש" />
-          <select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-          <select value={userForm.doctorId} onChange={(event) => setUserForm({ ...userForm, doctorId: event.target.value })}><option value="">לא מקושר לרופא</option>{data.doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}</select>
-          <button className="primary" onClick={addUser}>הוסף משתמש</button>
-        </div>
-        <div className="list">{data.users.map((user) => <div className="list-row" key={user.id}><span>{user.name} · <b dir="ltr">{user.email}</b><small>{roleLabels[user.role]} · {data.doctors.find((doctor) => doctor.id === user.doctorId)?.name ?? "לא מקושר"}</small></span><button onClick={() => toggleUser(user.id)}>{user.active ? "פעיל" : "חסום"}</button></div>)}</div>
+      <div className="doctor-card-list">
+        {data.doctors.map((doctor) => {
+          const linkedUser = data.users.find((user) => user.doctorId === doctor.id);
+          const expanded = expandedDoctorId === doctor.id;
+          const email = emailDrafts[doctor.id] ?? linkedUser?.email ?? "";
+          const appRole = roleDrafts[doctor.id] ?? linkedUser?.role ?? (doctor.group === "senior" ? "senior" : "resident");
+          return (
+            <article className={`doctor-card ${expanded ? "expanded" : ""}`} key={doctor.id} onClick={() => setExpandedDoctorId(expanded ? null : doctor.id)}>
+              <div className="doctor-card-main">
+                <span>
+                  <b>{doctor.name}</b>
+                  <small>{doctor.group === "resident" ? "מתמחה" : "בכיר"}{doctor.canAngio ? " · אנגיו" : ""}{linkedUser?.email ? ` · ${linkedUser.email}` : ""}</small>
+                </span>
+                <div className="row-actions">
+                  <button onClick={(event) => { event.stopPropagation(); toggleDoctor(doctor.id); }}>{doctor.active ? "פעיל" : "לא פעיל"}</button>
+                  <button className="danger" onClick={(event) => { event.stopPropagation(); removeDoctor(doctor.id); }}><Trash2 size={16} />הסר</button>
+                </div>
+              </div>
+              {expanded ? (
+                <div className="doctor-edit" onClick={(event) => event.stopPropagation()}>
+                  <label><Mail size={16} /> Gmail<input dir="ltr" value={email} onChange={(event) => setEmailDrafts({ ...emailDrafts, [doctor.id]: event.target.value })} placeholder="name@gmail.com" /></label>
+                  <label>הרשאה<select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור Gmail והרשאה</button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function Review({ schedule, counts, validateCurrent, publishCurrent, canPublish: publishAllowed, setFocusCell }: { schedule: MonthSchedule; counts: { errors: number; warnings: number }; validateCurrent: () => void; publishCurrent: () => void; canPublish: boolean; setFocusCell: (cell: string) => void }) {
+function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctors: Doctor[]; roles: Role[] }) {
+  const doctorById = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
+  const roleByCode = new Map(roles.map((role) => [role.code, role.name]));
+  const visible = entries.filter((entry) => entry.action === "request-apply-to-schedule");
   return (
     <section className="panel">
-      <div className="toolbar"><h2>בדיקה ופרסום</h2><div className="actions"><button onClick={validateCurrent}>בדוק עכשיו</button><button className="primary" disabled={!publishAllowed || (counts.errors > 0 && !schedule.validation.stale)} onClick={publishCurrent}>פרסם חודש</button></div></div>
-      <div className="status-grid compact"><InfoCell label="שגיאות" value={String(counts.errors)} tone={counts.errors ? "bad" : "good"} /><InfoCell label="אזהרות" value={String(counts.warnings)} tone={counts.warnings ? "warn" : "good"} /><InfoCell label="בדיקה" value={schedule.validation.checkedAt ? new Date(schedule.validation.checkedAt).toLocaleString("he-IL") : "טרם נבדק"} /><InfoCell label="גרסאות פרסום" value={String(schedule.publishSnapshots.length)} /></div>
-      <div className="list">{schedule.validation.issues.length === 0 ? <div className="list-row">אין בעיות שמורות.</div> : null}{schedule.validation.issues.map((issue) => <button key={issue.id} className={`issue-row ${issue.severity}`} onClick={() => issue.cellKey && setFocusCell(issue.cellKey)}><span>{issue.severity === "error" ? "שגיאה" : "אזהרה"}</span><b>{issue.message}</b><small>{issue.cellKey ?? ""}</small></button>)}</div>
-    </section>
-  );
-}
-
-function AuditPanel({ entries, full, appUser }: { entries: AuditEntry[]; full: boolean; appUser: AppUser | null }) {
-  const visible = full ? entries : entries.filter((entry) => entry.actorUserId === appUser?.id || entry.entityType === "request");
-  return (
-    <section className="panel">
-      <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} פעולות</span></div>
-      <div className="list audit-list">
-        {visible.map((entry) => <div className="list-row audit-row" key={entry.id}><span><b>{entry.action}</b> · {entry.displayTime}<small>{entry.actorName} · {entry.actorEmail} · {entry.entityType} · {entry.scheduleKey ?? ""}</small></span><code>{JSON.stringify({ before: entry.before, after: entry.after }, null, 2)}</code></div>)}
+      <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} שינויים אחרי פרסום</span></div>
+      <div className="list audit-list schedule-audit">
+        {visible.length === 0 ? <div className="list-row">אין עדיין שינויי שיבוץ אחרי פרסום.</div> : null}
+        {visible.map((entry) => {
+          const before = entry.before as { assignment?: Assignment | null; request?: ChangeRequest } | null;
+          const after = entry.after as { assignment?: Assignment | null; request?: ChangeRequest } | null;
+          const fromId = before?.assignment?.doctorId ?? before?.request?.currentDoctorId ?? null;
+          const toId = after?.assignment?.doctorId ?? after?.request?.proposedDoctorId ?? after?.request?.requesterDoctorId ?? null;
+          return (
+            <div className="list-row audit-change" key={entry.id}>
+              <span>
+                <b>{entry.actorName || entry.actorEmail}</b>
+                <small>{entry.displayTime} · {entry.actorEmail}</small>
+              </span>
+              <span>
+                <b>{entry.date ?? ""} · {entry.roleCode ? roleByCode.get(entry.roleCode) ?? entry.roleCode : ""}</b>
+                <small>{doctorById.get(fromId ?? "") ?? "לא שובץ"} ← {doctorById.get(toId ?? "") ?? "לא שובץ"}</small>
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

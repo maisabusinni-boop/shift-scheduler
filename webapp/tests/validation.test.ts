@@ -33,19 +33,18 @@ describe("validateSchedule", () => {
     expect(issues.some((issue) => issue.message.includes("חסום"))).toBe(true);
   });
 
-  it("allows the Friday senior duplicate pair", () => {
+  it("allows the Friday senior and Saturday half linked pair", () => {
     const schedule = createEmptySchedule(2026, 5);
     schedule.assignments[cellKey("2026-05-01", ROLE_CODES.SENIOR_A)] = { doctorId: "senior", pending: false };
-    schedule.assignments[cellKey("2026-05-01", ROLE_CODES.FRIDAY_MORNING_SENIOR)] = { doctorId: "senior", pending: false };
     schedule.assignments[cellKey("2026-05-02", ROLE_CODES.HALF_SENIOR)] = { doctorId: "senior", pending: false };
     const issues = validateSchedule(schedule, roles, doctors);
-    expect(issues.some((issue) => issue.message.includes("פעמיים"))).toBe(false);
+    expect(issues.some((issue) => issue.severity === "error")).toBe(false);
   });
 
   it("blocks duplicate same-day assignments", () => {
     const schedule = createEmptySchedule(2026, 5);
-    schedule.assignments[cellKey("2026-05-03", ROLE_CODES.SENIOR_A)] = { doctorId: "senior", pending: false };
-    schedule.assignments[cellKey("2026-05-03", ROLE_CODES.SENIOR_B)] = { doctorId: "senior", pending: false };
+    schedule.assignments[cellKey("2026-05-03", ROLE_CODES.SENIOR_A)] = { doctorId: "angio", pending: false };
+    schedule.assignments[cellKey("2026-05-03", ROLE_CODES.ANGIO)] = { doctorId: "angio", pending: false };
     const issues = validateSchedule(schedule, roles, doctors);
     expect(issues.some((issue) => issue.severity === "error" && issue.message.includes("פעמיים"))).toBe(true);
   });

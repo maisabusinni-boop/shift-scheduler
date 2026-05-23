@@ -53,7 +53,6 @@ export function createSampleWorkspace(): WorkspaceData {
   if (firstFriday) {
     schedule.assignments[`${firstFriday.key}|resident-on-call`] = { doctorId: "doc-cohen", pending: false };
     schedule.assignments[`${firstFriday.key}|senior-a`] = { doctorId: "doc-avni", pending: false };
-    schedule.assignments[`${firstFriday.key}|friday-morning-senior`] = { doctorId: "doc-avni", pending: false };
     schedule.assignments[`${firstFriday.key}|angio`] = { doctorId: "doc-barak", pending: false };
     schedule.assignments[`${buildMonthDays(year, month).find((day) => day.day === firstFriday.day + 1)?.key ?? firstFriday.key}|half-senior`] = {
       doctorId: "doc-avni",

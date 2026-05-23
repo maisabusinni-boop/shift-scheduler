@@ -13,11 +13,6 @@ function issue(message: string, severity: ValidationIssue["severity"], date?: st
   };
 }
 
-function allowedDuplicate(first: Role["code"], second: Role["code"]) {
-  const pair = new Set([first, second]);
-  return pair.has(ROLE_CODES.SENIOR_A) && pair.has(ROLE_CODES.FRIDAY_MORNING_SENIOR);
-}
-
 export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors: Doctor[]) {
   const issues: ValidationIssue[] = [];
   const roleByCode = new Map(roles.map((role) => [role.code, role]));
@@ -60,7 +55,6 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         if (items[i].doctor.id !== items[j].doctor.id) continue;
-        if (allowedDuplicate(items[i].role.code, items[j].role.code)) continue;
         issues.push(issue(`${items[i].doctor.name} מופיע/ה פעמיים באותו יום.`, "error", date, items[j].role.code));
       }
     }
@@ -93,17 +87,13 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
     if (weekday !== 5) return;
 
-    const fridaySenior = schedule.assignments[cellKey(date, ROLE_CODES.FRIDAY_MORNING_SENIOR)];
     const saturdayHalf = schedule.assignments[cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR)];
     const doctor = doctorById.get(assignment.doctorId);
-    if (fridaySenior?.doctorId && fridaySenior.doctorId !== assignment.doctorId) {
-      issues.push(issue("כונן א ושישי בוקר מומחה חייבים להיות אותו מומחה.", "error", date, ROLE_CODES.FRIDAY_MORNING_SENIOR));
-    }
     if (saturdayHalf?.doctorId && saturdayHalf.doctorId !== assignment.doctorId) {
-      issues.push(issue("כונן א ביום שישי ושבת חצי מומחה חייבים להיות אותו מומחה.", "error", nextDayKey(date), ROLE_CODES.HALF_SENIOR));
+      issues.push(issue("כונן ביום שישי ושבת חצי מומחה חייבים להיות אותו מומחה.", "error", nextDayKey(date), ROLE_CODES.HALF_SENIOR));
     }
-    if (doctor && (!fridaySenior?.doctorId || !saturdayHalf?.doctorId)) {
-      issues.push(issue(`${doctor.name} שובץ/ה בכונן א ביום שישי; כדאי להשלים את שלישיית שישי-שבת.`, "warning", date, ROLE_CODES.SENIOR_A));
+    if (doctor && !saturdayHalf?.doctorId) {
+      issues.push(issue(`${doctor.name} שובץ/ה בכונן ביום שישי; כדאי להשלים את שבת חצי מומחה.`, "warning", date, ROLE_CODES.SENIOR_A));
     }
   });
 
