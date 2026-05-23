@@ -14,7 +14,8 @@ export function normalizeEmail(email: string) {
 export function resolveSession(data: WorkspaceData, googleUser: CurrentUser | null): SessionState {
   if (!googleUser) return { status: "signed-out", googleUser: null, appUser: null, role: null, doctor: null };
   const email = normalizeEmail(googleUser.email);
-  if (data.users.length === 0) return { status: "bootstrap", googleUser: { ...googleUser, email }, appUser: null, role: "senior-planner", doctor: null };
+  const hasPlanner = data.users.some((user) => user.active && user.role === "senior-planner");
+  if (!hasPlanner) return { status: "bootstrap", googleUser: { ...googleUser, email }, appUser: null, role: "senior-planner", doctor: null };
 
   const appUser = data.users.find((user) => normalizeEmail(user.email) === email && user.active);
   if (!appUser) return { status: "blocked", googleUser: { ...googleUser, email }, appUser: null, role: null, doctor: null };

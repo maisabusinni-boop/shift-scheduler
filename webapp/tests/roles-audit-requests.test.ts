@@ -25,6 +25,22 @@ describe("Google role resolution", () => {
     expect(resolveSession(data, googleUser).status).toBe("recognized");
     expect(resolveSession(data, { email: "unknown@example.com", name: "Unknown" }).status).toBe("blocked");
   });
+
+  it("allows recovery bootstrap if users exist but no active planner exists", () => {
+    const data = createSampleWorkspace();
+    data.users.push({
+      id: "stale-user",
+      email: "resident@example.com",
+      name: "Resident",
+      role: "resident",
+      doctorId: null,
+      active: true,
+      createdAt: new Date().toISOString()
+    });
+    const session = resolveSession(data, googleUser);
+    expect(session.status).toBe("bootstrap");
+    expect(session.role).toBe("senior-planner");
+  });
 });
 
 describe("permissions", () => {
