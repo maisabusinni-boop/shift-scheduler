@@ -1,0 +1,34 @@
+{
+  "name": "שיבוץ תורנויות מחלקתי",
+  "short_name": "שיבוץ",
+  "description": "Chrome-only department shift scheduler with Google Drive sync.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape-primary",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#f6f7fb",
+  "theme_color": "#2563eb",
+  "categories": ["productivity", "medical", "utilities"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
