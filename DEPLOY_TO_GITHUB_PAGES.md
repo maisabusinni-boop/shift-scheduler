@@ -71,7 +71,13 @@ Create a Google OAuth Web Client ID in Google Cloud Console and add this authori
 https://YOUR_USERNAME.github.io
 ```
 
-Then paste the Client ID into the app login bar and connect with Google.
+The deployed app is preconfigured with this Google OAuth Web Client ID:
+
+```text
+264155836518-nqcoltph397ta3ua8hpemsegk3v5o5ck.apps.googleusercontent.com
+```
+
+Connect with Google from the app login bar.
 
 The first signed-in Google user can click the bootstrap button to become the initial **senior planner**. After that, the senior planner adds residents, seniors, and the chief resident by Google email inside **רופאים ומשתמשים**.
 

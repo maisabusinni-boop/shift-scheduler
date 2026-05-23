@@ -5,6 +5,7 @@ import type { WorkspaceData } from "@/types";
 const STORAGE_KEY = "department-shift-scheduler.workspace";
 const CLIENT_ID_KEY = "department-shift-scheduler.google-client-id";
 const DEVICE_ID_KEY = "department-shift-scheduler.device-id";
+export const DEFAULT_GOOGLE_CLIENT_ID = "264155836518-nqcoltph397ta3ua8hpemsegk3v5o5ck.apps.googleusercontent.com";
 
 export function loadLocalWorkspace(): WorkspaceData {
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -29,7 +30,7 @@ export function saveLocalWorkspace(data: WorkspaceData) {
 }
 
 export function loadGoogleClientId() {
-  return localStorage.getItem(CLIENT_ID_KEY) ?? "";
+  return localStorage.getItem(CLIENT_ID_KEY) ?? DEFAULT_GOOGLE_CLIENT_ID;
 }
 
 export function saveGoogleClientId(clientId: string) {

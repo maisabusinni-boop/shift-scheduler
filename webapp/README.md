@@ -69,7 +69,13 @@ https://YOUR_USERNAME.github.io
 
 ## Google login and Drive setup
 
-Create a Google OAuth Web Client ID and add the app origin, such as `http://127.0.0.1:3000` or `https://YOUR_USERNAME.github.io`, to authorized JavaScript origins. Paste that Client ID in the app login bar, connect with Google, then create or open the shared `department-shift-scheduler.json` file.
+The deployed app is preconfigured with this Google OAuth Web Client ID:
+
+```text
+264155836518-nqcoltph397ta3ua8hpemsegk3v5o5ck.apps.googleusercontent.com
+```
+
+Its authorized JavaScript origins are `https://maisabusinni-boop.github.io` and `http://127.0.0.1:3000`. Connect with Google, then create or open the shared `department-shift-scheduler.json` file.
 
 The first signed-in Google user can bootstrap as the senior planner. After that, the senior planner adds users by Google email and assigns app roles.
 

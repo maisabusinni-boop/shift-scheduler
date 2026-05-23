@@ -65,10 +65,14 @@ export async function connectGoogle(clientId: string) {
   if (!window.google) throw new Error("Google Identity Services לא נטען.");
 
   return new Promise<string>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error("חלון ההתחברות של Google לא הושלם. אם זה קורה בדפדפן פנימי, נסה לפתוח את האפליקציה ב-Chrome רגיל ולאשר חלונות קופצים."));
+    }, 120000);
     tokenClient = window.google!.accounts.oauth2.initTokenClient({
       client_id: trimmed,
       scope: GOOGLE_SCOPE,
       callback: (response) => {
+        window.clearTimeout(timeout);
         if (response.error || !response.access_token) {
           reject(new Error(response.error ?? "Google authorization failed."));
           return;
