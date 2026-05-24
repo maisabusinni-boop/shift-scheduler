@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ElementType } from "react";
+import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import {
   CalendarCheck,
   Cloud,
@@ -132,6 +132,8 @@ export function App() {
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
+  const lastSavedVersionRef = useRef<string | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const key = monthKey(year, month);
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
@@ -155,8 +157,11 @@ export function App() {
     }
   }, [tab, visibleTabs]);
 
-  function setAndPersist(next: WorkspaceData) {
+  function setAndPersist(next: WorkspaceData, isSavedToServer = false) {
     saveLocalWorkspace(next);
+    if (isSavedToServer) {
+      lastSavedVersionRef.current = next.updatedAt;
+    }
     setData(next);
   }
 
@@ -209,10 +214,45 @@ export function App() {
     if (hasCredentials()) {
       run(async () => {
         const remoteData = await loadWorkspace();
+        lastSavedVersionRef.current = remoteData.updatedAt;
         setData(remoteData);
       }, "הנתונים נטענו מחדש מהשרת.");
     }
   }, []);
+
+  // Debounced autosave effect
+  useEffect(() => {
+    if (!data || !hasCredentials()) return;
+    
+    if (!lastSavedVersionRef.current) {
+      lastSavedVersionRef.current = data.updatedAt;
+      return;
+    }
+    
+    if (data.updatedAt === lastSavedVersionRef.current) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        console.log("Autosaving changes to server...");
+        const saved = await saveWorkspace(data);
+        lastSavedVersionRef.current = saved.updatedAt;
+        setAndPersist(saved, true);
+      } catch (err) {
+        console.error("Autosave failed: ", err);
+        setMessage("שמירה אוטומטית נכשלה: " + (err instanceof Error ? err.message : String(err)));
+      }
+    }, 1500);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [data]);
 
   useEffect(() => {
     if (currentUser && data) {
@@ -234,6 +274,7 @@ export function App() {
       const passHash = await hashPassword(loginPassword);
       const appUser = await loginWithCredentials(loginUrl, loginUsername, passHash);
       const loaded = await loadWorkspace();
+      lastSavedVersionRef.current = loaded.updatedAt;
       setData(loaded);
       setCurrentUser({ username: loginUsername, name: appUser.name });
       setMessage("התחברת בהצלחה!");
@@ -260,6 +301,7 @@ export function App() {
     try {
       const passHash = await hashPassword(loginPassword);
       const result = await bootstrapPlanner(loginUrl, loginUsername, plannerName, passHash);
+      lastSavedVersionRef.current = result.data.updatedAt;
       setData(result.data);
       setCurrentUser({ username: loginUsername, name: result.user.name });
       setMessage("המערכת הוקמה בהצלחה! הוגדרת כמתכנן בכיר.");
@@ -509,7 +551,7 @@ export function App() {
       });
 
       const updatedWorkspace = await adminSaveUsers(cleanUsers, testDoctors);
-      setAndPersist(updatedWorkspace);
+      setAndPersist(updatedWorkspace, true);
       setMessage("20 רופאי בדיקה והמשתמש mais (סיסמה: 203-mais) נטענו בהצלחה מחשבון השרת!");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "טעינת נתוני בדיקה נכשלה.");
@@ -709,7 +751,7 @@ export function App() {
       }
       
       const updatedWorkspace = await adminSaveUsers(nextUsers, nextDoctors);
-      setAndPersist(updatedWorkspace);
+      setAndPersist(updatedWorkspace, true);
       setMessage("פרטי הרופא והמשתמש עודכנו בהצלחה בשרת.");
       
       // Clear password draft
@@ -1595,7 +1637,7 @@ function DrivePanel({
   data: WorkspaceData;
   busy: boolean;
   run: (action: () => Promise<void>, note?: string) => Promise<void>;
-  setAndPersist: (data: WorkspaceData) => void;
+  setAndPersist: (data: WorkspaceData, isSavedToServer?: boolean) => void;
   actorRole: AppRole | null;
   handleLogout: () => void;
 }) {
@@ -1625,7 +1667,7 @@ function DrivePanel({
               if (!overwrite) return;
             }
             const saved = await saveWorkspace(data);
-            setAndPersist(saved);
+            setAndPersist(saved, true);
           }, "הנתונים נשמרו בהצלחה בשרת.")}
           disabled={busy}
         >
@@ -1636,7 +1678,7 @@ function DrivePanel({
           style={{ alignSelf: "end" }}
           onClick={() => run(async () => {
             const loaded = await loadWorkspace();
-            setAndPersist(loaded);
+            setAndPersist(loaded, true);
           }, "הנתונים רועננו מהשרת.")}
           disabled={busy}
         >
