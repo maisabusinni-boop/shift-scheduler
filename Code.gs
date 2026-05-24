@@ -102,16 +102,22 @@ function doPost(e) {
       return makeResponse_({ success: true, data: clientWorkspace });
     }
     
-    // Save updated users list (Admin only)
+    // Save updated users and doctors list (Admin only)
     if (action === 'admin_save_users') {
       if (user.role !== 'senior-planner') {
         return makeResponse_({ error: "רק מתכנן בכיר רשאי לנהל משתמשים וסיסמאות." });
       }
       var newUsersList = request.users;
-      if (!newUsersList) {
-        return makeResponse_({ error: "לא נשלחו נתוני משתמשים." });
+      var newDoctorsList = request.doctors;
+      if (!newUsersList && !newDoctorsList) {
+        return makeResponse_({ error: "לא נשלחו נתונים לעדכון משתמשים או רופאים." });
       }
-      workspace.users = newUsersList;
+      if (newUsersList) {
+        workspace.users = newUsersList;
+      }
+      if (newDoctorsList) {
+        workspace.doctors = newDoctorsList;
+      }
       workspace.updatedAt = new Date().toISOString();
       file.setContent(JSON.stringify(workspace, null, 2));
       return makeResponse_({ success: true, data: workspace });

@@ -1,5 +1,5 @@
 import { migrateWorkspace } from "@/migration";
-import type { WorkspaceData, AppUser } from "@/types";
+import type { WorkspaceData, AppUser, Doctor } from "@/types";
 
 let webAppUrl = localStorage.getItem("department-shift-scheduler.webapp-url") || "https://script.google.com/macros/s/AKfycbzrLQhlCihebMkFfj0PeWdVUUsheh78UgmqdMkL8kPAvsJuTR5B8h9MkIS3Bc_tJEneNw/exec";
 let loggedInUsername = localStorage.getItem("department-shift-scheduler.username") || "";
@@ -139,8 +139,8 @@ export async function saveWorkspace(data: WorkspaceData): Promise<WorkspaceData>
   return saved;
 }
 
-export async function adminSaveUsers(users: AppUser[]): Promise<WorkspaceData> {
-  const result = await apiCall("admin_save_users", { users });
+export async function adminSaveUsers(users: AppUser[], doctors?: Doctor[]): Promise<WorkspaceData> {
+  const result = await apiCall("admin_save_users", { users, doctors });
   const data = migrateWorkspace(result.data);
   data.driveSync.webAppUrl = webAppUrl;
   data.driveSync.username = loggedInUsername;

@@ -68,6 +68,7 @@ import type {
   ChangeRequest,
   CurrentUser,
   Doctor,
+  DoctorGroup,
   MonthSchedule,
   Role,
   RoleCode,
@@ -123,6 +124,9 @@ export function App() {
   const [doctorUsernameDrafts, setDoctorUsernameDrafts] = useState<Record<string, string>>({});
   const [doctorPasswordDrafts, setDoctorPasswordDrafts] = useState<Record<string, string>>({});
   const [doctorRoleDrafts, setDoctorRoleDrafts] = useState<Record<string, AppRole>>({});
+  const [doctorNameDrafts, setDoctorNameDrafts] = useState<Record<string, string>>({});
+  const [doctorGroupDrafts, setDoctorGroupDrafts] = useState<Record<string, DoctorGroup>>({});
+  const [doctorAngioDrafts, setDoctorAngioDrafts] = useState<Record<string, boolean>>({});
   const [exclusionForm, setExclusionForm] = useState({ doctorId: "", reason: "" });
   const [exclusionRoleCodes, setExclusionRoleCodes] = useState<RoleCode[]>([ROLE_CODES.RESIDENT_ON_CALL]);
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
@@ -462,9 +466,14 @@ export function App() {
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
     if (!doctor) return setMessage("הרופא לא נמצא.");
     
+    const newName = (doctorNameDrafts[doctorId] ?? doctor.name).trim();
+    if (!newName) return setMessage("שם הרופא לא יכול להיות ריק.");
+    const newGroup = doctorGroupDrafts[doctorId] ?? doctor.group;
+    const newCanAngio = doctorAngioDrafts[doctorId] ?? doctor.canAngio;
+    
     const username = (doctorUsernameDrafts[doctorId] ?? "").trim().toLowerCase();
     const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
-    const appRole = doctorRoleDrafts[doctorId] ?? (doctor.group === "senior" ? "senior" : "resident");
+    const appRole = doctorRoleDrafts[doctorId] ?? (newGroup === "senior" ? "senior" : "resident");
     
     const existing = workspace.users.find((user) => user.doctorId === doctorId);
     if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
@@ -480,13 +489,13 @@ export function App() {
       const nextUsers = [...workspace.users];
       const matchIndex = nextUsers.findIndex(u => u.doctorId === doctorId);
       
-      const userMail = username ? username + "@local" : (existing?.email || (doctor.name + "@local"));
+      const userMail = username ? username + "@local" : (existing?.email || (newName + "@local"));
       
       if (matchIndex !== -1) {
         nextUsers[matchIndex] = {
           ...nextUsers[matchIndex],
           email: userMail,
-          name: doctor.name,
+          name: newName,
           role: appRole,
           active: true,
           passwordHash
@@ -495,7 +504,7 @@ export function App() {
         nextUsers.push({
           id: createId("user"),
           email: userMail,
-          name: doctor.name,
+          name: newName,
           role: appRole,
           doctorId: doctorId,
           active: true,
@@ -504,9 +513,20 @@ export function App() {
         });
       }
       
-      const updatedWorkspace = await adminSaveUsers(nextUsers);
+      const nextDoctors = [...workspace.doctors];
+      const docIndex = nextDoctors.findIndex((d) => d.id === doctorId);
+      if (docIndex !== -1) {
+        nextDoctors[docIndex] = {
+          ...nextDoctors[docIndex],
+          name: newName,
+          group: newGroup,
+          canAngio: newCanAngio
+        };
+      }
+      
+      const updatedWorkspace = await adminSaveUsers(nextUsers, nextDoctors);
       setAndPersist(updatedWorkspace);
-      setMessage("פרטי הכניסה של הרופא נשמרו בשרת.");
+      setMessage("פרטי הרופא והמשתמש עודכנו בהצלחה בשרת.");
       
       // Clear password draft
       setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
@@ -856,6 +876,12 @@ export function App() {
               setPasswordDrafts={setDoctorPasswordDrafts}
               roleDrafts={doctorRoleDrafts}
               setRoleDrafts={setDoctorRoleDrafts}
+              nameDrafts={doctorNameDrafts}
+              setNameDrafts={setDoctorNameDrafts}
+              groupDrafts={doctorGroupDrafts}
+              setGroupDrafts={setDoctorGroupDrafts}
+              angioDrafts={doctorAngioDrafts}
+              setAngioDrafts={setDoctorAngioDrafts}
               addDoctor={addDoctor}
               toggleDoctor={toggleDoctor}
               saveDoctorUser={saveDoctorUser}
@@ -1217,6 +1243,12 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
   setPasswordDrafts,
   roleDrafts,
   setRoleDrafts,
+  nameDrafts,
+  setNameDrafts,
+  groupDrafts,
+  setGroupDrafts,
+  angioDrafts,
+  setAngioDrafts,
   addDoctor,
   toggleDoctor,
   saveDoctorUser,
@@ -1233,6 +1265,12 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
   setPasswordDrafts: (value: Record<string, string>) => void;
   roleDrafts: Record<string, AppRole>;
   setRoleDrafts: (value: Record<string, AppRole>) => void;
+  nameDrafts: Record<string, string>;
+  setNameDrafts: (value: Record<string, string>) => void;
+  groupDrafts: Record<string, DoctorGroup>;
+  setGroupDrafts: (value: Record<string, DoctorGroup>) => void;
+  angioDrafts: Record<string, boolean>;
+  setAngioDrafts: (value: Record<string, boolean>) => void;
   addDoctor: () => void;
   toggleDoctor: (doctorId: string) => void;
   saveDoctorUser: (doctorId: string) => void;
@@ -1255,6 +1293,10 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
           const username = usernameDrafts[doctor.id] ?? displayUsername;
           const password = passwordDrafts[doctor.id] ?? "";
           const appRole = roleDrafts[doctor.id] ?? linkedUser?.role ?? (doctor.group === "senior" ? "senior" : "resident");
+          const drName = nameDrafts[doctor.id] ?? doctor.name;
+          const drGroup = groupDrafts[doctor.id] ?? doctor.group;
+          const drCanAngio = angioDrafts[doctor.id] ?? doctor.canAngio;
+          
           return (
             <article className={`doctor-card ${expanded ? "expanded" : ""}`} key={doctor.id} onClick={() => setExpandedDoctorId(expanded ? null : doctor.id)}>
               <div className="doctor-card-main">
@@ -1268,11 +1310,36 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
                 </div>
               </div>
               {expanded ? (
-                <div className="doctor-edit" onClick={(event) => event.stopPropagation()}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}><Mail size={16} /> שם משתמש<input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="שם משתמש" /></label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}><Settings size={16} /> סיסמה<input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="השאר ריק לשמירה על הקודמת" /></label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה<select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <button className="primary" onClick={() => saveDoctorUser(doctor.id)} style={{ marginTop: "8px" }}>שמור פרטי משתמש</button>
+                <div className="doctor-edit" onClick={(event) => event.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי רופא</h3>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם מלא של הרופא
+                      <input value={drName} onChange={(event) => setNameDrafts({ ...nameDrafts, [doctor.id]: event.target.value })} placeholder="שם רופא" />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>סוג
+                      <select value={drGroup} onChange={(event) => setGroupDrafts({ ...groupDrafts, [doctor.id]: event.target.value as DoctorGroup })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
+                    </label>
+                    <label className="check" style={{ alignSelf: "end", minHeight: "38px" }}>
+                      <input type="checkbox" checked={drCanAngio} onChange={(event) => setAngioDrafts({ ...angioDrafts, [doctor.id]: event.target.checked })} />מורשה אנגיו
+                    </label>
+                  </div>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", borderTop: "1px dashed var(--line)", paddingTop: "12px" }}>
+                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי כניסה והרשאות מערכת</h3>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם משתמש
+                      <input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="שם משתמש" />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>סיסמה חדשה
+                      <input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="השאר ריק לשמירה על הקודמת" />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה במערכת
+                      <select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                    </label>
+                  </div>
+                  
+                  <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--line)", paddingTop: "12px", marginTop: "4px" }}>
+                    <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור שינויים</button>
+                  </div>
                 </div>
               ) : null}
             </article>
