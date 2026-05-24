@@ -36,7 +36,7 @@ import {
   getLocalCredentials
 } from "@/googleDrive";
 import { migrateWorkspace } from "@/migration";
-import { buildMonthDays, monthKey, nextDayKey } from "@/month";
+import { buildMonthDays, monthKey, nextDayKey, previousDayKey } from "@/month";
 import {
   canApplyRequest,
   canEditDraftRoster,
@@ -332,6 +332,190 @@ export function App() {
       },
       note: "הבדיקה הושלמה."
     });
+  }
+
+  function autoGenerateRoster() {
+    if (!canEditDraftRoster(role)) return setMessage("רק מנהל או צ'יף יכולים לערוך את הסידור.");
+    
+    const activeDoctors = workspace.doctors.filter(d => d.active);
+    if (activeDoctors.length === 0) return setMessage("אין רופאים פעילים במערכת. אנא הוסף או טען רופאים תחילה.");
+    
+    const priorityRoles = [
+      ROLE_CODES.ANGIO,
+      ROLE_CODES.SENIOR_A,
+      ROLE_CODES.FRIDAY_MORNING_RESIDENT,
+      ROLE_CODES.RESIDENT_ON_CALL,
+      ROLE_CODES.HALF_SENIOR,
+      ROLE_CODES.HALF_RESIDENT
+    ];
+    
+    const newAssignments: Record<string, Assignment> = {};
+    const doctorAssignmentCounts: Record<string, number> = {};
+    activeDoctors.forEach(d => { doctorAssignmentCounts[d.id] = 0; });
+    
+    const roleByCode = new Map(workspace.roles.map(r => [r.code, r]));
+    const exclusionsSet = new Set<string>();
+    schedule.exclusions.forEach(ex => {
+      exclusionsSet.add(`${ex.date}|${ex.roleCode ?? "*"}|${ex.doctorId}`);
+    });
+    
+    function isAssignedOnDate(doctorId: string, dateStr: string) {
+      return priorityRoles.some(roleCode => {
+        const key = cellKey(dateStr, roleCode);
+        return newAssignments[key]?.doctorId === doctorId;
+      });
+    }
+    
+    function getAssignedDoctor(dateStr: string, roleCode: RoleCode) {
+      const key = cellKey(dateStr, roleCode);
+      return newAssignments[key]?.doctorId || null;
+    }
+    
+    for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+      const day = days[dayIndex];
+      const dateStr = day.key;
+      const weekday = new Date(`${dateStr}T00:00:00.000Z`).getUTCDay();
+      
+      for (const roleCode of priorityRoles) {
+        const role = roleByCode.get(roleCode);
+        if (!role) continue;
+        
+        if (isFridayOnlyRole(roleCode) && weekday !== 5) continue;
+        
+        // Rule: Saturday half-senior must match Friday senior-a
+        if (roleCode === ROLE_CODES.HALF_SENIOR && weekday === 6) {
+          const prevFriday = previousDayKey(dateStr);
+          const fridaySeniorA = getAssignedDoctor(prevFriday, ROLE_CODES.SENIOR_A);
+          if (fridaySeniorA) {
+            const isExcluded = exclusionsSet.has(`${dateStr}|*|${fridaySeniorA}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${fridaySeniorA}`);
+            const alreadyAssigned = isAssignedOnDate(fridaySeniorA, dateStr);
+            if (!isExcluded && !alreadyAssigned) {
+              newAssignments[cellKey(dateStr, roleCode)] = { doctorId: fridaySeniorA, pending: false };
+              doctorAssignmentCounts[fridaySeniorA]++;
+              continue;
+            }
+          }
+        }
+        
+        // Find eligible doctors
+        let candidates = activeDoctors.filter(doc => {
+          if (!isDoctorEligibleForRole(doc, role)) return false;
+          if (exclusionsSet.has(`${dateStr}|*|${doc.id}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${doc.id}`)) return false;
+          if (isAssignedOnDate(doc.id, dateStr)) return false;
+          
+          const prevDate = previousDayKey(dateStr);
+          const prevAssignment = newAssignments[cellKey(prevDate, roleCode)];
+          if (prevAssignment?.doctorId === doc.id) {
+            if (roleCode === ROLE_CODES.RESIDENT_ON_CALL || roleCode === ROLE_CODES.HALF_SENIOR) return false;
+          }
+          
+          if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
+            const nextSaturday = nextDayKey(dateStr);
+            const satExcluded = exclusionsSet.has(`${nextSaturday}|*|${doc.id}`) || exclusionsSet.has(`${nextSaturday}|${ROLE_CODES.HALF_SENIOR}|${doc.id}`);
+            if (satExcluded) return false;
+          }
+          
+          return true;
+        });
+        
+        if (candidates.length === 0) {
+          candidates = activeDoctors.filter(doc => {
+            if (!isDoctorEligibleForRole(doc, role)) return false;
+            if (exclusionsSet.has(`${dateStr}|*|${doc.id}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${doc.id}`)) return false;
+            if (isAssignedOnDate(doc.id, dateStr)) return false;
+            return true;
+          });
+        }
+        
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => {
+            const countA = doctorAssignmentCounts[a.id];
+            const countB = doctorAssignmentCounts[b.id];
+            if (countA !== countB) return countA - countB;
+            return Math.random() - 0.5;
+          });
+          
+          const chosen = candidates[0];
+          newAssignments[cellKey(dateStr, roleCode)] = { doctorId: chosen.id, pending: false };
+          doctorAssignmentCounts[chosen.id]++;
+          
+          if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
+            const nextSaturday = nextDayKey(dateStr);
+            newAssignments[cellKey(nextSaturday, ROLE_CODES.HALF_SENIOR)] = { doctorId: chosen.id, pending: false };
+            doctorAssignmentCounts[chosen.id]++;
+          }
+        }
+      }
+    }
+    
+    commitChange({
+      mutator: (draft, currentSchedule) => {
+        const before = { ...currentSchedule.assignments };
+        currentSchedule.assignments = newAssignments;
+        currentSchedule.validation.stale = true;
+        return {
+          action: "schedule-generate-auto",
+          entityType: "schedule",
+          entityId: currentSchedule.key,
+          before,
+          after: newAssignments
+        };
+      },
+      note: "השיבוץ האוטומטי הושלם בהצלחה!"
+    });
+  }
+
+  async function loadTestData() {
+    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לטעון נתוני בדיקה.");
+    setBusy(true);
+    try {
+      const testDoctors: Doctor[] = [
+        { id: "doc-res-1", name: 'ד"ר מיכל כהן', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-2", name: 'ד"ר דוד לוי', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-3", name: 'ד"ר שירה מזרחי', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-4", name: 'ד"ר יוסף פרץ', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-5", name: 'ד"ר רחל ביטון', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-6", name: 'ד"ר משה דהן', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-7", name: 'ד"ר אסתר אברהם', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-8", name: 'ד"ר חיים אזולאי', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-9", name: 'ד"ר חנה חסן', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-10", name: 'ד"ר שמעון עמר', group: "resident", canAngio: false, active: true },
+        
+        { id: "doc-sen-1", name: 'ד"ר אהרן אבני', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-2", name: 'ד"ר ברק גונן', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-3", name: 'ד"ר שרה רוזן', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-4", name: 'ד"ר דניאל שמידט', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-5", name: 'ד"ר לאה קליין', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-6", name: 'ד"ר גבריאל מילר', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-7", name: 'ד"ר מרים גולדשטיין', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-8", name: 'ד"ר אליעזר כץ', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-9", name: 'ד"ר רות פרידמן', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-10", name: 'ד"ר שמואל לוין', group: "senior", canAngio: false, active: true }
+      ];
+
+      const hash = await hashPassword("203-mais");
+      const nextUsers = [...workspace.users];
+      
+      const cleanUsers = nextUsers.filter(u => u.email.split('@')[0] !== "mais");
+      cleanUsers.push({
+        id: "user-mais",
+        email: "mais@local",
+        name: "מאיס",
+        role: "senior-planner",
+        doctorId: null,
+        active: true,
+        createdAt: new Date().toISOString(),
+        passwordHash: hash
+      });
+
+      const updatedWorkspace = await adminSaveUsers(cleanUsers, testDoctors);
+      setAndPersist(updatedWorkspace);
+      setMessage("20 רופאי בדיקה והמשתמש mais (סיסמה: 203-mais) נטענו בהצלחה מחשבון השרת!");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "טעינת נתוני בדיקה נכשלה.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function publishCurrent() {
@@ -823,6 +1007,7 @@ export function App() {
                 unpublishCurrent={unpublishCurrent}
                 updateAssignment={updateAssignment}
                 setFocusCell={setFocusCell}
+                autoSchedule={autoGenerateRoster}
               />
             ) : (
               <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
@@ -886,6 +1071,7 @@ export function App() {
               toggleDoctor={toggleDoctor}
               saveDoctorUser={saveDoctorUser}
               removeDoctor={removeDoctor}
+              loadTestData={loadTestData}
             />
           )}
           {tab === "audit" && <AuditPanel entries={workspace.auditLog} doctors={workspace.doctors} roles={workspace.roles} />}
@@ -976,7 +1162,8 @@ function Roster({
   publishCurrent,
   unpublishCurrent,
   setFocusCell,
-  updateAssignment
+  updateAssignment,
+  autoSchedule
 }: {
   schedule: MonthSchedule;
   roles: Role[];
@@ -991,6 +1178,7 @@ function Roster({
   unpublishCurrent: () => void;
   setFocusCell: (cell: string) => void;
   updateAssignment: (date: string, roleCode: RoleCode, value: string) => void;
+  autoSchedule: () => void;
 }) {
   const issueByCell = new Map(schedule.validation.issues.map((issue) => [issue.cellKey, issue.severity]));
   return (
@@ -1001,6 +1189,11 @@ function Roster({
           <span>{editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
         </div>
         <div className="actions">
+          {editable && (
+            <button onClick={autoSchedule} style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af" }}>
+              שיבוץ אוטומטי
+            </button>
+          )}
           <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>בדוק</button>
           <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>פרסם</button>
           <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>החזר לטיוטה</button>
@@ -1252,7 +1445,8 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
   addDoctor,
   toggleDoctor,
   saveDoctorUser,
-  removeDoctor
+  removeDoctor,
+  loadTestData
 }: {
   data: WorkspaceData;
   form: { name: string; group: Doctor["group"]; canAngio: boolean };
@@ -1275,10 +1469,19 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
   toggleDoctor: (doctorId: string) => void;
   saveDoctorUser: (doctorId: string) => void;
   removeDoctor: (doctorId: string) => void;
+  loadTestData?: () => void;
 }) {
   return (
     <section className="panel">
-      <div className="toolbar"><h2>רופאים ומשתמשים</h2><span>{data.doctors.length} רשומות</span></div>
+      <div className="toolbar">
+        <h2>רופאים ומשתמשים</h2>
+        <span>{data.doctors.length} רשומות</span>
+        {loadTestData && (
+          <button onClick={loadTestData} style={{ background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" }}>
+            טען 20 רופאי בדיקה ומשתמש mais
+          </button>
+        )}
+      </div>
       <div className="form-row doctor-add-row">
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
         <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
