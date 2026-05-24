@@ -18,6 +18,8 @@ export type AuditInput = {
   roleCode?: RoleCode;
   before: unknown;
   after: unknown;
+  snapshotFileId?: string;
+  snapshotUrl?: string;
 };
 
 export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditEntry {
@@ -40,6 +42,8 @@ export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditE
     after: input.after,
     deviceId: actor.deviceId,
     driveVersion: actor.driveSync.lastLoadedVersion ?? null,
-    driveModifiedTime: actor.driveSync.lastLoadedModifiedTime ?? null
+    driveModifiedTime: actor.driveSync.lastLoadedModifiedTime ?? null,
+    snapshotFileId: input.snapshotFileId,
+    snapshotUrl: input.snapshotUrl
   };
 }

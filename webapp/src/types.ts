@@ -145,6 +145,8 @@ export type AuditEntry = {
   deviceId: string;
   driveVersion?: string | null;
   driveModifiedTime?: string | null;
+  snapshotFileId?: string;
+  snapshotUrl?: string;
 };
 
 export type MonthSchedule = {

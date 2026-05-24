@@ -146,3 +146,8 @@ export async function adminSaveUsers(users: AppUser[], doctors?: Doctor[]): Prom
   data.driveSync.username = loggedInUsername;
   return data;
 }
+
+export async function saveSnapshotImage(imageName: string, imageDataUri: string): Promise<{ fileId: string; url: string }> {
+  const result = await apiCall("save_snapshot", { imageName, imageDataUri });
+  return { fileId: result.fileId, url: result.url };
+}

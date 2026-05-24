@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import {
   CalendarCheck,
+  Check,
   Cloud,
   Download,
   FileJson,
@@ -16,7 +17,8 @@ import {
   Trash2,
   Upload,
   UserCheck,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { createAuditEntry, type ActorContext, type AuditInput } from "@/audit";
 import { resolveSession, type SessionUser } from "@/auth";
@@ -32,6 +34,7 @@ import {
   loadWorkspace,
   saveWorkspace,
   adminSaveUsers,
+  saveSnapshotImage,
   clearLocalCredentials,
   getLocalCredentials
 } from "@/googleDrive";
@@ -77,10 +80,11 @@ import type {
 import { validateSchedule } from "@/validation";
 import "./styles.css";
 
-type TabId = "roster" | "exclusions" | "requests" | "doctors" | "audit" | "drive" | "calendar" | "settings";
+type TabId = "published-roster" | "roster" | "exclusions" | "requests" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 
-const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean }> = [
-  { id: "roster", label: "שיבוץ", icon: Table2, scheduleEditor: true },
+const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
+  { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
+  { id: "roster", label: "טיוטת סידור", icon: Table2, draftPlanner: true },
   { id: "exclusions", label: "אילוצים", icon: FileWarning },
   { id: "requests", label: "שינוי תורנות", icon: UserCheck },
   { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
@@ -132,6 +136,9 @@ export function App() {
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
+  const [swapModalCell, setSwapModalCell] = useState<{ date: string; roleCode: RoleCode; giverDoctorId: string } | null>(null);
+  const [swapTargetDoctorId, setSwapTargetDoctorId] = useState("");
+  const [swapReason, setSwapReason] = useState("");
   const lastSavedVersionRef = useRef<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -904,6 +911,418 @@ export function App() {
     });
   }
 
+  async function generateSnapshotCard(
+    workspaceData: WorkspaceData,
+    currentSchedule: MonthSchedule,
+    date: string,
+    roleCode: RoleCode,
+    giverDoc: Doctor,
+    receiverDoc: Doctor,
+    reason: string,
+    actorName: string
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 800;
+      canvas.height = 420;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve("");
+        return;
+      }
+
+      ctx.direction = "rtl";
+
+      // 1. Draw Background Card
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillRect(0, 0, 800, 420);
+      
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(2, 2, 796, 416);
+
+      // 2. Draw Title Header
+      ctx.fillStyle = "#1e3a8a";
+      ctx.fillRect(4, 4, 792, 80);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText("קבלת שינוי תורנות - לוח מפורסם", 770, 38);
+
+      ctx.fillStyle = "#93c5fd";
+      ctx.font = "14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("תיעוד רשמי של העברת תורנות במערכת השיבוץ", 770, 64);
+
+      // 3. Draw Metadata Block
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(30, 95, 740, 135);
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(30, 95, 740, 135);
+
+      ctx.fillStyle = "#334155";
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("מבצע השינוי:", 750, 125);
+      ctx.font = "14px system-ui, -apple-system, sans-serif";
+      ctx.fillText(actorName, 630, 125);
+
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("זמן ביצוע:", 750, 155);
+      ctx.font = "14px system-ui, -apple-system, sans-serif";
+      const formattedTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
+      ctx.fillText(formattedTime, 630, 155);
+
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("מהות השינוי:", 750, 185);
+      ctx.fillStyle = "#b91c1c";
+      
+      const roleName = workspaceData.roles.find(r => r.code === roleCode)?.name ?? roleCode;
+      const [y, m, d] = date.split("-");
+      const formattedDate = `${d}/${m}/${y}`;
+      ctx.fillText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`, 750, 185);
+      
+      ctx.fillStyle = "#1e293b";
+      ctx.font = "14px system-ui, -apple-system, sans-serif";
+      const textWidth = ctx.measureText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`).width;
+      ctx.fillText(`ד"ר ${giverDoc.name} ➔ ד"ר ${receiverDoc.name}`, 750 - textWidth - 10, 185);
+
+      ctx.fillStyle = "#334155";
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("סיבת העברה:", 750, 215);
+      ctx.font = "italic 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText(reason || "לא צוינה סיבה", 630, 215);
+
+      // 4. Draw Context Table
+      ctx.fillStyle = "#334155";
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillText("מצב השיבוץ באותו יום (לפני השינוי):", 770, 260);
+
+      const tableTop = 275;
+      const tableLeft = 30;
+      const tableWidth = 740;
+      const tableHeight = 60;
+      const rowHeight = 30;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(tableLeft, tableTop, tableWidth, tableHeight);
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.strokeRect(tableLeft, tableTop, tableWidth, tableHeight);
+
+      const columns = ["תאריך", ...workspaceData.roles.map(r => r.name)];
+      const colCount = columns.length;
+      const colWidth = tableWidth / colCount;
+
+      ctx.fillStyle = "#f1f5f9";
+      ctx.fillRect(tableLeft, tableTop, tableWidth, rowHeight);
+
+      ctx.fillStyle = "#475569";
+      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      columns.forEach((colName, index) => {
+        const x = tableLeft + (index + 0.5) * colWidth;
+        ctx.fillText(colName, x, tableTop + 20);
+      });
+
+      const rowTop = tableTop + rowHeight;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(tableLeft, rowTop, tableWidth, rowHeight);
+
+      ctx.fillStyle = "#1e293b";
+      ctx.font = "12px system-ui, -apple-system, sans-serif";
+      ctx.fillText(formattedDate, tableLeft + 0.5 * colWidth, rowTop + 20);
+
+      workspaceData.roles.forEach((r, idx) => {
+        const cellIdx = idx + 1;
+        const cellKeyStr = cellKey(date, r.code);
+        const assignment = currentSchedule.assignments[cellKeyStr] ?? { doctorId: null, pending: false };
+        
+        const docName = assignment.doctorId 
+          ? (workspaceData.doctors.find(doc => doc.id === assignment.doctorId)?.name ?? "לא ידוע")
+          : (assignment.pending ? "ממתין" : "לא שובץ");
+        
+        const x = tableLeft + (cellIdx + 0.5) * colWidth;
+
+        if (r.code === roleCode) {
+          ctx.save();
+          ctx.fillStyle = "#fee2e2";
+          ctx.fillRect(tableLeft + cellIdx * colWidth, rowTop, colWidth, rowHeight);
+          ctx.strokeStyle = "#f87171";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(tableLeft + cellIdx * colWidth + 1, rowTop + 1, colWidth - 2, rowHeight - 2);
+          
+          ctx.fillStyle = "#b91c1c";
+          ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
+          ctx.fillText(docName, x, rowTop + 20);
+          ctx.restore();
+        } else {
+          ctx.fillText(docName, x, rowTop + 20);
+        }
+      });
+
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < colCount; i++) {
+        const x = tableLeft + i * colWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, tableTop);
+        ctx.lineTo(x, tableTop + tableHeight);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(tableLeft, rowTop);
+      ctx.lineTo(tableLeft + tableWidth, rowTop);
+      ctx.stroke();
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "10px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("מאובטח ע\"י Google Drive & Apps Script Backend", 35, 400);
+
+      resolve(canvas.toDataURL("image/png"));
+    });
+  }
+
+  async function handleExecuteSwap() {
+    if (!swapModalCell || !swapTargetDoctorId) return;
+    const { date, roleCode, giverDoctorId } = swapModalCell;
+    const giverDoctor = workspace.doctors.find(d => d.id === giverDoctorId);
+    const receiverDoctor = workspace.doctors.find(d => d.id === swapTargetDoctorId);
+    if (!giverDoctor || !receiverDoctor) return;
+
+    const user = requireUser();
+    const actorName = user.name || user.email;
+    const isDirect = role === "senior-planner" || (role === "senior" && giverDoctor.group === "senior");
+
+    if (isDirect) {
+      setBusy(true);
+      setMessage("מייצר קבלת שינוי ומעלה ל-Google Drive...");
+      try {
+        const imgDataUri = await generateSnapshotCard(
+          data,
+          schedule,
+          date,
+          roleCode,
+          giverDoctor,
+          receiverDoctor,
+          swapReason,
+          actorName
+        );
+
+        let fileId = "";
+        let fileUrl = "";
+
+        if (imgDataUri) {
+          try {
+            const fileName = `snapshot_${date}_${roleCode}_${Date.now()}.png`;
+            const uploadResult = await saveSnapshotImage(fileName, imgDataUri);
+            fileId = uploadResult.fileId;
+            fileUrl = uploadResult.url;
+          } catch (uploadErr) {
+            console.error("Failed to upload snapshot to Drive:", uploadErr);
+          }
+        }
+
+        commitChange({
+          mutator: (_draft, currentSchedule) => {
+            const cellKeyStr = cellKey(date, roleCode);
+            const before = {
+              assignment: currentSchedule.assignments[cellKeyStr] ?? null
+            };
+            currentSchedule.assignments[cellKeyStr] = { doctorId: swapTargetDoctorId, pending: false };
+            currentSchedule.validation.stale = true;
+
+            const auditEntryInput: AuditInput = {
+              action: "published-swap-direct",
+              entityType: "assignment",
+              entityId: cellKeyStr,
+              scheduleKey: currentSchedule.key,
+              date,
+              roleCode,
+              before,
+              after: { assignment: currentSchedule.assignments[cellKeyStr] }
+            };
+
+            if (fileId) {
+              (auditEntryInput as any).snapshotFileId = fileId;
+              (auditEntryInput as any).snapshotUrl = fileUrl;
+            }
+
+            return auditEntryInput;
+          },
+          note: `השינוי בוצע בהצלחה ותועד ביומן הפעולות${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+        });
+
+        if (schedule.status === "published") {
+          try {
+            await mockCalendarSync();
+          } catch (syncErr) {
+            console.error("Calendar auto sync failed:", syncErr);
+          }
+        }
+
+      } catch (err) {
+        setMessage("שגיאה בביצוע ההחלפה: " + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        setBusy(false);
+        setSwapModalCell(null);
+        setSwapTargetDoctorId("");
+        setSwapReason("");
+      }
+    } else {
+      commitChange({
+        mutator: (_draft, currentSchedule) => {
+          const request = createChangeRequest({
+            schedule: currentSchedule,
+            requesterUser: user,
+            date,
+            roleCode,
+            proposedDoctorId: swapTargetDoctorId,
+            reason: swapReason
+          });
+          request.currentDoctorId = giverDoctorId;
+          _draft.changeRequests.unshift(request);
+          return {
+            action: "request-create-published-swap",
+            entityType: "request",
+            entityId: request.id,
+            scheduleKey: currentSchedule.key,
+            date,
+            roleCode,
+            before: null,
+            after: request
+          };
+        },
+        note: "בקשת החלפה נשלחה לאישור הצ'יף."
+      });
+      setSwapModalCell(null);
+      setSwapTargetDoctorId("");
+      setSwapReason("");
+    }
+  }
+
+  async function handleApproveRequest(requestId: string, resolutionNote: string) {
+    const request = data.changeRequests.find(r => r.id === requestId);
+    if (!request) return;
+
+    const giverDoctor = workspace.doctors.find(d => d.id === request.currentDoctorId || d.id === request.requesterDoctorId);
+    const receiverDoctor = workspace.doctors.find(d => d.id === request.proposedDoctorId);
+    if (!giverDoctor || !receiverDoctor) {
+      setMessage("לא נמצאו הרופאים המתאימים לבקשה זו.");
+      return;
+    }
+
+    setBusy(true);
+    setMessage("מייצר קבלת שינוי ומעלה ל-Google Drive...");
+
+    try {
+      const imgDataUri = await generateSnapshotCard(
+        data,
+        schedule,
+        request.date,
+        request.roleCode,
+        giverDoctor,
+        receiverDoctor,
+        request.reason,
+        appUser?.name || appUser?.email || "צ'יף מתמחים"
+      );
+
+      let fileId = "";
+      let fileUrl = "";
+
+      if (imgDataUri) {
+        try {
+          const fileName = `snapshot_${request.date}_${request.roleCode}_${Date.now()}.png`;
+          const uploadResult = await saveSnapshotImage(fileName, imgDataUri);
+          fileId = uploadResult.fileId;
+          fileUrl = uploadResult.url;
+        } catch (uploadErr) {
+          console.error("Failed to upload approval snapshot:", uploadErr);
+        }
+      }
+
+      commitChange({
+        mutator: (draft) => {
+          const targetRequest = draft.changeRequests.find(r => r.id === requestId);
+          const targetSchedule = targetRequest ? draft.schedules[targetRequest.scheduleKey] : null;
+          if (!targetRequest || !targetSchedule) return;
+
+          const cellKeyStr = cellKey(targetRequest.date, targetRequest.roleCode);
+          const before = {
+            request: { ...targetRequest },
+            assignment: targetSchedule.assignments[cellKeyStr] ?? null
+          };
+
+          targetSchedule.assignments[cellKeyStr] = { doctorId: targetRequest.proposedDoctorId, pending: false };
+          targetSchedule.validation.stale = true;
+
+          targetRequest.status = "applied";
+          targetRequest.resolutionNote = resolutionNote || "אושר ע\"י צ'יף";
+          targetRequest.appliedAt = new Date().toISOString();
+          targetRequest.appliedByUserId = appUser?.id ?? null;
+          targetRequest.updatedAt = targetRequest.appliedAt;
+
+          const auditEntryInput: AuditInput = {
+            action: "published-swap-approved",
+            entityType: "request",
+            entityId: targetRequest.id,
+            scheduleKey: targetRequest.scheduleKey,
+            date: targetRequest.date,
+            roleCode: targetRequest.roleCode,
+            before,
+            after: { request: targetRequest, assignment: targetSchedule.assignments[cellKeyStr] }
+          };
+
+          if (fileId) {
+            (auditEntryInput as any).snapshotFileId = fileId;
+            (auditEntryInput as any).snapshotUrl = fileUrl;
+          }
+
+          return auditEntryInput;
+        },
+        note: `הבקשה אושרה והוחלה על השיבוץ${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+      });
+
+      try {
+        await mockCalendarSync();
+      } catch (syncErr) {
+        console.error("Calendar auto sync failed:", syncErr);
+      }
+
+    } catch (err) {
+      setMessage("שגיאה באישור הבקשה: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleRejectRequest(requestId: string) {
+    if (!canReviewRequests(role)) return setMessage("אין הרשאה לטפל בבקשות.");
+    commitChange({
+      mutator: (draft) => {
+        const request = draft.changeRequests.find(r => r.id === requestId);
+        if (!request) return;
+        const before = { ...request };
+        request.status = "rejected";
+        request.decidedAt = new Date().toISOString();
+        request.decidedByUserId = appUser?.id ?? null;
+        request.resolutionNote = "נדחה";
+        request.updatedAt = request.decidedAt;
+        return {
+          action: "published-swap-rejected",
+          entityType: "request",
+          entityId: request.id,
+          scheduleKey: request.scheduleKey,
+          date: request.date,
+          roleCode: request.roleCode,
+          before,
+          after: request
+        };
+      },
+      note: "הבקשה נדחתה."
+    });
+  }
+
   const counts = useMemo(() => {
     const assigned = Object.values(schedule.assignments).filter((assignment) => assignment.doctorId && !assignment.pending).length;
     const pending = workspace.roles.length * days.length - assigned;
@@ -1033,6 +1452,27 @@ export function App() {
             })}
           </nav>
 
+          {tab === "published-roster" && (
+            canSeeSchedule(role, schedule) ? (
+              <PublishedRoster
+                schedule={schedule}
+                roles={workspace.roles}
+                doctors={workspace.doctors}
+                days={days}
+                role={role}
+                appUser={appUser}
+                changeRequests={workspace.changeRequests}
+                onSwapCellClick={(date, roleCode, giverDoctorId) => {
+                  setSwapModalCell({ date, roleCode, giverDoctorId });
+                }}
+                onApproveRequest={handleApproveRequest}
+                onRejectRequest={handleRejectRequest}
+              />
+            ) : (
+              <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
+            )
+          )}
+
           {tab === "roster" && (
             canViewActiveSchedule ? (
               <Roster
@@ -1147,6 +1587,83 @@ export function App() {
               exportCsv={() => downloadCsv(workspace, key)}
             />
           )}
+
+          {swapModalCell && (
+            <div className="modal-overlay" style={{
+              position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(0, 0, 0, 0.4)", display: "flex",
+              alignItems: "center", justifyContent: "center", zIndex: 1000
+            }}>
+              <div className="panel" style={{ width: "450px", padding: "24px", direction: "rtl" }}>
+                <h3 style={{ marginTop: 0 }}>העברת / החלפת תורנות</h3>
+                <p style={{ fontSize: "14px", color: "var(--muted)", marginBottom: "16px" }}>
+                  העברת התורנות של <strong>{workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId)?.name}</strong> בתפקיד <strong>{workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name}</strong> בתאריך <strong>{swapModalCell.date.split("-").reverse().join("/")}</strong>.
+                </p>
+                
+                <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px", fontWeight: "bold" }}>
+                  בחר רופא מחליף
+                  <select 
+                    value={swapTargetDoctorId} 
+                    onChange={(e) => setSwapTargetDoctorId(e.target.value)}
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">-- בחר רופא --</option>
+                    {(() => {
+                      const giverDoctor = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
+                      const roleObj = workspace.roles.find(r => r.code === swapModalCell.roleCode);
+                      if (!giverDoctor || !roleObj) return null;
+                      
+                      const options = workspace.doctors.filter(d => 
+                        d.active && 
+                        d.id !== swapModalCell.giverDoctorId && 
+                        d.group === giverDoctor.group && 
+                        isDoctorEligibleForRole(d, roleObj)
+                      );
+                      const availableOptions = options.filter(d => !isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
+                      const blockedOptions = options.filter(d => isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
+                      
+                      return (
+                        <>
+                          {availableOptions.map(d => (
+                            <option key={d.id} value={d.id}>{formatDoctorOption(d)}</option>
+                          ))}
+                          {blockedOptions.length > 0 && <option disabled>━━ אילוצים ━━</option>}
+                          {blockedOptions.map(d => (
+                            <option key={d.id} value={d.id}>{formatDoctorOption(d)} (אילוץ)</option>
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </select>
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px", fontWeight: "bold" }}>
+                  סיבה לשינוי
+                  <input 
+                    value={swapReason} 
+                    onChange={(e) => setSwapReason(e.target.value)} 
+                    placeholder="הקלד סיבה להעברה..." 
+                    style={{ width: "100%" }}
+                  />
+                </label>
+
+                <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                  <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
+                  <button 
+                    className="primary" 
+                    disabled={!swapTargetDoctorId} 
+                    onClick={handleExecuteSwap}
+                  >
+                    {(() => {
+                      const giverDoctor = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
+                      const isDirect = role === "senior-planner" || (role === "senior" && giverDoctor?.group === "senior");
+                      return isDirect ? "בצע החלפה מיידית" : "שלח בקשה לאישור";
+                    })()}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       ) : null}
     </main>
@@ -1156,6 +1673,7 @@ export function App() {
 function canSeeTab(item: (typeof tabs)[number], role: AppRole | null) {
   if (!role) return false;
   if (item.plannerOnly) return canUsePlannerTools(role);
+  if (item.draftPlanner) return role === "senior-planner" || role === "chief-resident";
   if (item.scheduleEditor) return true;
   if (item.requestReviewer) return canReviewRequests(role);
   if (item.audit) return role === "senior-planner" || role === "chief-resident";
@@ -1466,6 +1984,215 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
     applied: "הוחל"
   };
   return labels[status];
+}
+
+function PublishedRoster({
+  schedule,
+  roles,
+  doctors,
+  days,
+  role,
+  appUser,
+  changeRequests,
+  onSwapCellClick,
+  onApproveRequest,
+  onRejectRequest
+}: {
+  schedule: MonthSchedule;
+  roles: Role[];
+  doctors: Doctor[];
+  days: ReturnType<typeof buildMonthDays>;
+  role: AppRole;
+  appUser: AppUser | null;
+  changeRequests: ChangeRequest[];
+  onSwapCellClick: (date: string, roleCode: RoleCode, giverDoctorId: string) => void;
+  onApproveRequest: (id: string, reason: string) => Promise<void>;
+  onRejectRequest: (id: string) => void;
+}) {
+  const [swapMode, setSwapMode] = useState(false);
+  const [approveNotes, setApproveNotes] = useState<Record<string, string>>({});
+  
+  const pendingRequests = useMemo(() => {
+    return changeRequests.filter(r => r.scheduleKey === schedule.key && r.status === "submitted");
+  }, [changeRequests, schedule.key]);
+
+  function canClickCell(assignment: Assignment, roleCode: RoleCode) {
+    if (!swapMode || schedule.status === "draft") return false;
+    if (!assignment.doctorId) return false;
+    const assignedDoc = doctors.find(d => d.id === assignment.doctorId);
+    if (!assignedDoc) return false;
+
+    if (role === "senior-planner") return true;
+
+    if (role === "senior") {
+      return assignedDoc.group === "senior";
+    }
+
+    if (role === "resident" || role === "chief-resident") {
+      return assignedDoc.group === "resident";
+    }
+
+    return false;
+  }
+
+  return (
+    <section className="panel">
+      <div className="toolbar roster-toolbar">
+        <div>
+          <h2>לוח תורנויות מפורסם</h2>
+          <span>{schedule.status === "published" ? "מצב צפייה פעיל" : "טיוטה (קריאה בלבד)"}</span>
+        </div>
+        <div className="actions">
+          {schedule.status === "published" && (
+            <button 
+              className={swapMode ? "primary" : ""} 
+              onClick={() => setSwapMode(!swapMode)}
+              style={swapMode ? { background: "#dc2626", borderColor: "#dc2626", color: "#fff" } : undefined}
+            >
+              <UserCheck size={17} />
+              {swapMode ? "בטל מצב החלפה" : "החלפה / שינוי תורנות"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {swapMode && (
+        <div className="notice" style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af", marginBottom: "12px", fontSize: "14px" }}>
+          <strong>מצב החלפות פעיל!</strong> לחץ על תורנות מאוישת בטבלה כדי לבצע שינוי או לשלוח בקשת החלפה.
+          <br />
+          <small>* בכירים יכולים לשנות בכירים בלבד (מיידי). מתמחים יכולים להציע החלפה עם מתמחים בלבד (באישור צ'יף).</small>
+        </div>
+      )}
+
+      <div className="board-wrap">
+        <table className="roster-table">
+          <thead>
+            <tr>
+              <th className="sticky-date">תאריך</th>
+              {roles.map((roleItem) => (
+                <th key={roleItem.code}>
+                  <span className="role-title">
+                    <i style={{ background: roleItem.color }} />
+                    {roleItem.name}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((day) => (
+              <tr key={day.key}>
+                <th className="sticky-date">
+                  <strong>{day.day}</strong>
+                  <span>{day.weekdayLabel}</span>
+                </th>
+                {roles.map((roleItem) => {
+                  const key = cellKey(day.key, roleItem.code);
+                  const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
+                  const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+                  const assignedDoc = assignment.doctorId ? doctors.find(d => d.id === assignment.doctorId) : null;
+                  
+                  const clickable = canClickCell(assignment, roleItem.code);
+
+                  return (
+                    <td 
+                      key={roleItem.code} 
+                      className={`${disabled ? "disabled" : ""} ${clickable ? "clickable-swap-cell" : ""}`}
+                      onClick={() => {
+                        if (clickable && assignment.doctorId) {
+                          onSwapCellClick(day.key, roleItem.code, assignment.doctorId);
+                        }
+                      }}
+                      style={clickable ? {
+                        cursor: "pointer",
+                        background: "#f0f9ff",
+                        border: "1.5px dashed #0284c7",
+                        transition: "background 0.2s"
+                      } : undefined}
+                    >
+                      {disabled ? (
+                        <span className="blocked-cell">לא פעיל</span>
+                      ) : assignment.pending ? (
+                        <span style={{ color: "var(--muted)", fontStyle: "italic" }}>ממתין</span>
+                      ) : assignedDoc ? (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span style={{ fontWeight: 600 }}>{assignedDoc.name}</span>
+                          {clickable && <span style={{ fontSize: "10px", color: "#0284c7" }}>לחץ לשינוי</span>}
+                        </div>
+                      ) : (
+                        <span style={{ color: "#cbd5e1" }}>-</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {canReviewRequests(role) && (
+        <div style={{ marginTop: "32px", borderTop: "1px solid var(--line)", paddingTop: "20px" }}>
+          <h3>בקשות החלפה והעברת תורנויות הממתינות לאישור</h3>
+          {pendingRequests.length === 0 ? (
+            <p style={{ color: "var(--muted)", fontSize: "14px" }}>אין בקשות תלויות ועומדות לאישור בחודש זה.</p>
+          ) : (
+            <div className="list" style={{ marginTop: "12px" }}>
+              {pendingRequests.map((req) => {
+                const requesterDoc = doctors.find(d => d.id === req.requesterDoctorId);
+                const currentDoc = doctors.find(d => d.id === req.currentDoctorId);
+                const proposedDoc = doctors.find(d => d.id === req.proposedDoctorId);
+                const roleObj = roles.find(r => r.code === req.roleCode);
+                
+                const [y, m, d] = req.date.split("-");
+                const formattedDate = `${d}/${m}/${y}`;
+
+                return (
+                  <div className="list-row tall" key={req.id} style={{ borderLeft: "4px solid var(--blue)" }}>
+                    <span>
+                      <strong>העברת תורנות ({roleObj?.name}) בתאריך {formattedDate}</strong>
+                      <small style={{ fontSize: "13px", marginTop: "4px", color: "var(--ink)" }}>
+                        רופא רשום: <strong>{currentDoc?.name ?? "לא שובץ"}</strong> ➔ מחליף מוצע: <strong>{proposedDoc?.name ?? "ללא"}</strong>
+                      </small>
+                      <small style={{ marginTop: "2px" }}>
+                        הוגש ע"י: {requesterDoc?.name} (תפקיד: {roleLabels[req.requesterRole]})
+                        {req.reason && ` · סיבה: "${req.reason}"`}
+                      </small>
+                    </span>
+                    <div className="row-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <input 
+                        type="text" 
+                        placeholder="הערה לאישור (אופציונלי)..." 
+                        value={approveNotes[req.id] ?? ""} 
+                        onChange={(e) => setApproveNotes({ ...approveNotes, [req.id]: e.target.value })}
+                        style={{ minHeight: "34px", fontSize: "13px", width: "180px" }}
+                      />
+                      <button 
+                        className="primary" 
+                        style={{ minHeight: "34px", background: "var(--good)", borderColor: "var(--good)" }}
+                        onClick={() => onApproveRequest(req.id, approveNotes[req.id] ?? "")}
+                      >
+                        <Check size={16} />
+                        אשר
+                      </button>
+                      <button 
+                        className="danger" 
+                        style={{ minHeight: "34px" }}
+                        onClick={() => onRejectRequest(req.id)}
+                      >
+                        <X size={16} />
+                        דחה
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }function Doctors({
   data,
   form,
@@ -1597,7 +2324,11 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
 function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctors: Doctor[]; roles: Role[] }) {
   const doctorById = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
   const roleByCode = new Map(roles.map((role) => [role.code, role.name]));
-  const visible = entries.filter((entry) => entry.action === "request-apply-to-schedule");
+  const visible = entries.filter((entry) => 
+    entry.action === "request-apply-to-schedule" ||
+    entry.action === "published-swap-direct" ||
+    entry.action === "published-swap-approved"
+  );
   return (
     <section className="panel">
       <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} שינויים אחרי פרסום</span></div>
@@ -1617,6 +2348,13 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
               <span>
                 <b>{entry.date ?? ""} · {entry.roleCode ? roleByCode.get(entry.roleCode) ?? entry.roleCode : ""}</b>
                 <small>{doctorById.get(fromId ?? "") ?? "לא שובץ"} ← {doctorById.get(toId ?? "") ?? "לא שובץ"}</small>
+                {entry.snapshotUrl && (
+                  <small style={{ marginTop: "4px" }}>
+                    <a href={entry.snapshotUrl} target="_blank" rel="noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>
+                      הצג צילום מסך לפני השינוי (Google Drive)
+                    </a>
+                  </small>
+                )}
               </span>
             </div>
           );

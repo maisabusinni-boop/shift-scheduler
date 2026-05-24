@@ -123,6 +123,26 @@ function doPost(e) {
       return makeResponse_({ success: true, data: workspace });
     }
     
+    // Save a snapshot image to Drive (Planner/Chief or any logged-in user making a swap)
+    if (action === 'save_snapshot') {
+      var imageName = request.imageName;
+      var imageDataUri = request.imageDataUri;
+      if (!imageName || !imageDataUri) {
+        return makeResponse_({ error: "שם קובץ או תמונת Snapshot חסרים." });
+      }
+      
+      var folderName = "shift-scheduler-snapshots";
+      var folders = DriveApp.getFoldersByName(folderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      
+      var base64Data = imageDataUri.split(',')[1];
+      var decodedBytes = Utilities.base64Decode(base64Data);
+      var blob = Utilities.newBlob(decodedBytes, 'image/png', imageName);
+      
+      var newFile = folder.createFile(blob);
+      return makeResponse_({ success: true, fileId: newFile.getId(), url: newFile.getUrl() });
+    }
+    
     return makeResponse_({ error: "פעולה לא מוכרת." });
     
   } catch (err) {
