@@ -45,6 +45,7 @@ export type AppUser = {
   doctorId: string | null;
   active: boolean;
   createdAt: string;
+  passwordHash?: string;
 };
 
 export type CurrentUser = {
@@ -170,6 +171,8 @@ export type DriveSyncState = {
   lastSavedModifiedTime: string | null;
   lastLoadedVersion?: string | null;
   lastSavedVersion?: string | null;
+  webAppUrl?: string | null;
+  username?: string | null;
 };
 
 export type WorkspaceData = {

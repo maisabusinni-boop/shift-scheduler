@@ -1,190 +1,148 @@
 import { migrateWorkspace } from "@/migration";
-import type { CurrentUser, WorkspaceData } from "@/types";
+import type { WorkspaceData, AppUser } from "@/types";
 
-type TokenResponse = {
-  access_token?: string;
-  error?: string;
-};
+let webAppUrl = localStorage.getItem("department-shift-scheduler.webapp-url") || "";
+let loggedInUsername = localStorage.getItem("department-shift-scheduler.username") || "";
+let loggedInPasswordHash = localStorage.getItem("department-shift-scheduler.password-hash") || "";
 
-type TokenClient = {
-  requestAccessToken: (options?: { prompt?: string }) => void;
-  callback: (response: TokenResponse) => void;
-};
+export function getWebAppUrl() {
+  return webAppUrl;
+}
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initTokenClient: (options: {
-            client_id: string;
-            scope: string;
-            callback: (response: TokenResponse) => void;
-          }) => TokenClient;
-        };
-      };
-    };
+export function setWebAppUrl(url: string) {
+  webAppUrl = url.trim();
+  localStorage.setItem("department-shift-scheduler.webapp-url", webAppUrl);
+}
+
+export function setLocalCredentials(username: string, passwordHash: string) {
+  loggedInUsername = username.trim().toLowerCase();
+  loggedInPasswordHash = passwordHash;
+  localStorage.setItem("department-shift-scheduler.username", loggedInUsername);
+  localStorage.setItem("department-shift-scheduler.password-hash", passwordHash);
+}
+
+export function clearLocalCredentials() {
+  loggedInUsername = "";
+  loggedInPasswordHash = "";
+  localStorage.removeItem("department-shift-scheduler.username");
+  localStorage.removeItem("department-shift-scheduler.password-hash");
+}
+
+export function getLocalCredentials() {
+  return { username: loggedInUsername, passwordHash: loggedInPasswordHash };
+}
+
+export function hasCredentials() {
+  return Boolean(webAppUrl && loggedInUsername && loggedInPasswordHash);
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashHex;
+}
+
+async function apiCall(action: string, extraPayload: Record<string, any> = {}): Promise<any> {
+  if (!webAppUrl) {
+    throw new Error("לא הוגדר URL לחיבור לשרת (Google Apps Script).");
   }
-}
-
-const GIS_SRC = "https://accounts.google.com/gsi/client";
-const GOOGLE_SCOPE = "openid email profile https://www.googleapis.com/auth/drive.file";
-const DRIVE_FIELDS = "id,name,modifiedTime,version,webViewLink";
-
-export type DriveFileMetadata = {
-  id: string;
-  name: string;
-  modifiedTime: string;
-  version?: string;
-  webViewLink?: string;
-};
-
-let tokenClient: TokenClient | null = null;
-let accessToken = "";
-
-function loadScript(src: string) {
-  return new Promise<void>((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Google Identity script."));
-    document.head.appendChild(script);
-  });
-}
-
-export async function connectGoogle(clientId: string) {
-  const trimmed = clientId.trim();
-  if (!trimmed) throw new Error("צריך להזין Google OAuth Client ID.");
-  await loadScript(GIS_SRC);
-  if (!window.google) throw new Error("Google Identity Services לא נטען.");
-
-  return new Promise<string>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      reject(new Error("חלון ההתחברות של Google לא הושלם. אם זה קורה בדפדפן פנימי, נסה לפתוח את האפליקציה ב-Chrome רגיל ולאשר חלונות קופצים."));
-    }, 120000);
-    tokenClient = window.google!.accounts.oauth2.initTokenClient({
-      client_id: trimmed,
-      scope: GOOGLE_SCOPE,
-      callback: (response) => {
-        window.clearTimeout(timeout);
-        if (response.error || !response.access_token) {
-          reject(new Error(response.error ?? "Google authorization failed."));
-          return;
-        }
-        accessToken = response.access_token;
-        resolve(accessToken);
-      }
-    });
-    tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
-  });
-}
-
-export const connectGoogleDrive = connectGoogle;
-
-export function hasDriveToken() {
-  return Boolean(accessToken);
-}
-
-export async function getCurrentGoogleUser(): Promise<CurrentUser> {
-  const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-    headers: authHeaders()
-  });
-  if (!response.ok) throw new Error("לא ניתן לקרוא את פרטי המשתמש מ-Google.");
-  const profile = (await response.json()) as { email?: string; name?: string; picture?: string };
-  if (!profile.email) throw new Error("חשבון Google לא החזיר כתובת מייל.");
-  return {
-    email: profile.email.toLowerCase(),
-    name: profile.name ?? profile.email,
-    picture: profile.picture
+  
+  const payload = {
+    action,
+    username: loggedInUsername,
+    passwordHash: loggedInPasswordHash,
+    ...extraPayload
   };
+  
+  const response = await fetch(webAppUrl, {
+    method: "POST",
+    mode: "cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify(payload)
+  });
+  
+  if (!response.ok) {
+    throw new Error(`שגיאת שרת: ${response.statusText} (${response.status})`);
+  }
+  
+  const result = await response.json();
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  
+  return result;
 }
 
-function authHeaders(extra?: HeadersInit) {
-  if (!accessToken) throw new Error("צריך להתחבר ל-Google Drive קודם.");
-  return {
-    Authorization: `Bearer ${accessToken}`,
-    ...extra
-  };
-}
-
-export function extractDriveFileId(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) return "";
+export async function loginWithCredentials(url: string, username: string, passwordHash: string): Promise<AppUser> {
+  const prevUrl = webAppUrl;
+  const prevUser = loggedInUsername;
+  const prevHash = loggedInPasswordHash;
+  
   try {
-    const url = new URL(trimmed);
-    const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/);
-    if (fileMatch) return fileMatch[1];
-    const id = url.searchParams.get("id");
-    if (id) return id;
-  } catch {
-    return trimmed;
+    webAppUrl = url.trim();
+    loggedInUsername = username.trim().toLowerCase();
+    loggedInPasswordHash = passwordHash;
+    
+    const result = await apiCall("login");
+    
+    setWebAppUrl(url);
+    setLocalCredentials(username, passwordHash);
+    return result.user;
+  } catch (err) {
+    webAppUrl = prevUrl;
+    loggedInUsername = prevUser;
+    loggedInPasswordHash = prevHash;
+    throw err;
   }
-  return trimmed;
 }
 
-export async function getDriveFileMetadata(fileId: string): Promise<DriveFileMetadata> {
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${encodeURIComponent(DRIVE_FIELDS)}`, {
-    headers: authHeaders()
-  });
-  if (!response.ok) throw new Error("לא ניתן לקרוא את פרטי הקובץ מ-Google Drive.");
-  return response.json() as Promise<DriveFileMetadata>;
+export async function bootstrapPlanner(url: string, username: string, name: string, passwordHash: string): Promise<{ user: AppUser; data: WorkspaceData }> {
+  const prevUrl = webAppUrl;
+  const prevUser = loggedInUsername;
+  const prevHash = loggedInPasswordHash;
+  
+  try {
+    webAppUrl = url.trim();
+    loggedInUsername = username.trim().toLowerCase();
+    loggedInPasswordHash = passwordHash;
+    
+    const result = await apiCall("bootstrap", { name });
+    
+    setWebAppUrl(url);
+    setLocalCredentials(username, passwordHash);
+    return { user: result.user, data: migrateWorkspace(result.data) };
+  } catch (err) {
+    webAppUrl = prevUrl;
+    loggedInUsername = prevUser;
+    loggedInPasswordHash = prevHash;
+    throw err;
+  }
 }
 
-export async function createDriveWorkspaceFile(data: WorkspaceData): Promise<DriveFileMetadata> {
-  const boundary = `scheduler_${crypto.randomUUID()}`;
-  const metadata = {
-    name: data.driveSync.fileName || "department-shift-scheduler.json",
-    mimeType: "application/json"
-  };
-  const body = [
-    `--${boundary}`,
-    "Content-Type: application/json; charset=UTF-8",
-    "",
-    JSON.stringify(metadata),
-    `--${boundary}`,
-    "Content-Type: application/json; charset=UTF-8",
-    "",
-    JSON.stringify(data, null, 2),
-    `--${boundary}--`
-  ].join("\r\n");
-
-  const response = await fetch(
-    `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=${encodeURIComponent(DRIVE_FIELDS)}`,
-    {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
-      body
-    }
-  );
-  if (!response.ok) throw new Error("יצירת קובץ Drive נכשלה.");
-  return response.json() as Promise<DriveFileMetadata>;
+export async function loadWorkspace(): Promise<WorkspaceData> {
+  const result = await apiCall("load");
+  const data = migrateWorkspace(result.data);
+  data.driveSync.webAppUrl = webAppUrl;
+  data.driveSync.username = loggedInUsername;
+  return data;
 }
 
-export async function loadWorkspaceFromDrive(fileId: string): Promise<{ data: WorkspaceData; metadata: DriveFileMetadata }> {
-  const metadata = await getDriveFileMetadata(fileId);
-  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: authHeaders()
-  });
-  if (!response.ok) throw new Error("טעינת קובץ השיבוץ מ-Drive נכשלה.");
-  const data = migrateWorkspace(await response.json());
-  return { data, metadata };
+export async function saveWorkspace(data: WorkspaceData): Promise<WorkspaceData> {
+  const result = await apiCall("save", { data });
+  const saved = migrateWorkspace(result.data);
+  saved.driveSync.webAppUrl = webAppUrl;
+  saved.driveSync.username = loggedInUsername;
+  return saved;
 }
 
-export async function saveWorkspaceToDrive(fileId: string, data: WorkspaceData): Promise<DriveFileMetadata> {
-  const response = await fetch(
-    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=${encodeURIComponent(DRIVE_FIELDS)}`,
-    {
-      method: "PATCH",
-      headers: authHeaders({ "Content-Type": "application/json; charset=UTF-8" }),
-      body: JSON.stringify(data, null, 2)
-    }
-  );
-  if (!response.ok) throw new Error("שמירת קובץ השיבוץ ל-Drive נכשלה.");
-  return response.json() as Promise<DriveFileMetadata>;
+export async function adminSaveUsers(users: AppUser[]): Promise<WorkspaceData> {
+  const result = await apiCall("admin_save_users", { users });
+  const data = migrateWorkspace(result.data);
+  data.driveSync.webAppUrl = webAppUrl;
+  data.driveSync.username = loggedInUsername;
+  return data;
 }

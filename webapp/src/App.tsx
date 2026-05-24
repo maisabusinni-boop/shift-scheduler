@@ -19,18 +19,21 @@ import {
   Users
 } from "lucide-react";
 import { createAuditEntry, type ActorContext, type AuditInput } from "@/audit";
-import { createBootstrapPlanner, resolveSession } from "@/auth";
+import { resolveSession, type SessionUser } from "@/auth";
 import { buildCalendarPreview, normalizeCalendarId } from "@/calendar";
 import { cellKey, createId, doctorSortForRole, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
 import {
-  connectGoogle,
-  createDriveWorkspaceFile,
-  extractDriveFileId,
-  getCurrentGoogleUser,
-  getDriveFileMetadata,
-  hasDriveToken,
-  loadWorkspaceFromDrive,
-  saveWorkspaceToDrive
+  getWebAppUrl,
+  setWebAppUrl,
+  hasCredentials,
+  hashPassword,
+  loginWithCredentials,
+  bootstrapPlanner,
+  loadWorkspace,
+  saveWorkspace,
+  adminSaveUsers,
+  clearLocalCredentials,
+  getLocalCredentials
 } from "@/googleDrive";
 import { migrateWorkspace } from "@/migration";
 import { buildMonthDays, monthKey, nextDayKey } from "@/month";
@@ -81,7 +84,7 @@ const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: b
   { id: "requests", label: "שינוי תורנות", icon: UserCheck },
   { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
   { id: "audit", label: "יומן פעולות", icon: History, audit: true },
-  { id: "drive", label: "Drive Sync", icon: Cloud, plannerOnly: true },
+  { id: "drive", label: "חיבור שרת", icon: Cloud, plannerOnly: true },
   { id: "calendar", label: "יומן Google", icon: CalendarCheck, plannerOnly: true },
   { id: "settings", label: "הגדרות / יבוא", icon: Settings, plannerOnly: true }
 ];
@@ -103,14 +106,21 @@ export function App() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [focusCell, setFocusCell] = useState<string | null>(null);
-  const [clientId, setClientId] = useState(() => loadGoogleClientId());
-  const [driveFileInput, setDriveFileInput] = useState("");
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(() => {
+    const creds = getLocalCredentials();
+    return creds.username ? { username: creds.username, name: creds.username } : null;
+  });
+  const [loginUrl, setLoginUrl] = useState(() => getWebAppUrl());
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [plannerName, setPlannerName] = useState("");
+  const [showBootstrap, setShowBootstrap] = useState(false);
   const [calendarInput, setCalendarInput] = useState(data.calendar.calendarInput);
-  const [googleUser, setGoogleUser] = useState<CurrentUser | null>(null);
   const [deviceId] = useState(() => loadDeviceId());
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
   const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
-  const [doctorEmailDrafts, setDoctorEmailDrafts] = useState<Record<string, string>>({});
+  const [doctorUsernameDrafts, setDoctorUsernameDrafts] = useState<Record<string, string>>({});
+  const [doctorPasswordDrafts, setDoctorPasswordDrafts] = useState<Record<string, string>>({});
   const [doctorRoleDrafts, setDoctorRoleDrafts] = useState<Record<string, AppRole>>({});
   const [exclusionForm, setExclusionForm] = useState({ doctorId: "", reason: "" });
   const [exclusionRoleCodes, setExclusionRoleCodes] = useState<RoleCode[]>([ROLE_CODES.RESIDENT_ON_CALL]);
@@ -122,7 +132,7 @@ export function App() {
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
   const schedule = workspace.schedules[key];
   const days = useMemo(() => buildMonthDays(year, month), [year, month]);
-  const session = useMemo(() => resolveSession(workspace, googleUser), [workspace, googleUser]);
+  const session = useMemo(() => resolveSession(workspace, currentUser), [workspace, currentUser]);
   const role = session.role;
   const appUser = session.status === "recognized" ? session.appUser : null;
   const sessionDoctor = session.status === "recognized" ? session.doctor : null;
@@ -148,7 +158,7 @@ export function App() {
   function actorFor(next?: WorkspaceData): ActorContext {
     const target = next ?? workspace;
     return {
-      googleUser,
+      googleUser: currentUser ? { email: currentUser.username + "@local", name: currentUser.name } : null,
       appUserId: appUser?.id ?? null,
       appRole: role ?? "unrecognized",
       deviceId,
@@ -190,54 +200,76 @@ export function App() {
     return appUser;
   }
 
-  async function connectAndIdentify() {
-    await connectGoogle(clientId);
-    saveGoogleClientId(clientId);
-    const profile = await getCurrentGoogleUser();
-    setGoogleUser(profile);
+  useEffect(() => {
+    if (hasCredentials()) {
+      run(async () => {
+        const remoteData = await loadWorkspace();
+        setData(remoteData);
+      }, "הנתונים נטענו מחדש מהשרת.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && data) {
+      const match = data.users.find(u => u.active && (u.email ? u.email.split('@')[0] : "").toLowerCase() === currentUser.username.toLowerCase());
+      if (match && match.name !== currentUser.name) {
+        setCurrentUser({ username: currentUser.username, name: match.name });
+      }
+    }
+  }, [data, currentUser]);
+
+  async function handleLogin() {
+    if (!loginUrl) return setMessage("נא להזין את כתובת השרת.");
+    if (!loginUsername) return setMessage("נא להזין שם משתמש.");
+    if (!loginPassword) return setMessage("נא להזין סיסמה.");
+    
+    setBusy(true);
     setMessage("");
+    try {
+      const passHash = await hashPassword(loginPassword);
+      const appUser = await loginWithCredentials(loginUrl, loginUsername, passHash);
+      const loaded = await loadWorkspace();
+      setData(loaded);
+      setCurrentUser({ username: loginUsername, name: appUser.name });
+      setMessage("התחברת בהצלחה!");
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "ההתחברות נכשלה.";
+      if (errorMsg.includes("לא נמצא") || errorMsg.includes("שם משתמש או סיסמה") || errorMsg.includes("שגויים")) {
+        setMessage(`${errorMsg}. אם זו הפעם הראשונה שאתה מחבר את השרת, לחץ על 'הקמה ראשונית' למטה.`);
+      } else {
+        setMessage(errorMsg);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function bootstrapPlanner() {
-    if (session.status !== "bootstrap") return;
-    commitChange({
-      mutator: (draft) => {
-        const user = createBootstrapPlanner(session.googleUser);
-        draft.users.push(user);
-        return {
-          action: "bootstrap-senior-planner",
-          entityType: "user",
-          entityId: user.id,
-          before: null,
-          after: user
-        };
-      },
-      note: "משתמש ראשון הוגדר כמתכנן בכיר."
-    });
+  async function handleBootstrap() {
+    if (!loginUrl) return setMessage("נא להזין את כתובת השרת.");
+    if (!loginUsername) return setMessage("נא להזין שם משתמש מבוקש.");
+    if (!loginPassword) return setMessage("נא להזין סיסמה מבוקשת.");
+    if (!plannerName) return setMessage("נא להזין את השם המלא שלך.");
+    
+    setBusy(true);
+    setMessage("");
+    try {
+      const passHash = await hashPassword(loginPassword);
+      const result = await bootstrapPlanner(loginUrl, loginUsername, plannerName, passHash);
+      setData(result.data);
+      setCurrentUser({ username: loginUsername, name: result.user.name });
+      setMessage("המערכת הוקמה בהצלחה! הוגדרת כמתכנן בכיר.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "ההקמה נכשלה.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function recoverLocalPlanner() {
-    if (session.status !== "blocked") return;
-    const confirmed = window.confirm("פעולת שחזור מקומית: החשבון המחובר יהפוך למתכנן בכיר בדפדפן הזה. להשתמש בזה רק אם נתקעת בשלב ההקמה?");
-    if (!confirmed) return;
-    commitChange({
-      mutator: (draft) => {
-        const before = draft.users;
-        const user = createBootstrapPlanner(session.googleUser);
-        draft.users = [
-          user,
-          ...draft.users.map((candidate) => (candidate.role === "senior-planner" ? { ...candidate, active: false } : candidate))
-        ];
-        return {
-          action: "local-planner-recovery",
-          entityType: "user",
-          entityId: user.id,
-          before,
-          after: draft.users
-        };
-      },
-      note: "שחזור מקומי הושלם. החשבון המחובר הוגדר כמתכנן בכיר."
-    });
+  function handleLogout() {
+    clearLocalCredentials();
+    setCurrentUser(null);
+    setLoginPassword("");
+    setMessage("התנתקת בהצלחה.");
   }
 
   function updateAssignment(date: string, roleCode: RoleCode, value: string) {
@@ -424,42 +456,64 @@ export function App() {
     });
   }
 
-  function saveDoctorUser(doctorId: string) {
+  async function saveDoctorUser(doctorId: string) {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל משתמשים.");
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
     if (!doctor) return setMessage("הרופא לא נמצא.");
+    
+    const username = (doctorUsernameDrafts[doctorId] ?? "").trim().toLowerCase();
+    const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
+    const appRole = doctorRoleDrafts[doctorId] ?? (doctor.group === "senior" ? "senior" : "resident");
+    
     const existing = workspace.users.find((user) => user.doctorId === doctorId);
-    const email = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
-    const appRole = doctorRoleDrafts[doctorId] ?? existing?.role ?? (doctor.group === "senior" ? "senior" : "resident");
-    if (!email) return setMessage("צריך להזין Gmail לרופא.");
-    commitChange({
-      mutator: (draft) => {
-        const targetDoctor = draft.doctors.find((candidate) => candidate.id === doctorId);
-        if (!targetDoctor) return;
-        const user = draft.users.find((candidate) => candidate.doctorId === doctorId);
-        const before = user ? { ...user } : null;
-        if (user) {
-          user.email = email;
-          user.name = targetDoctor.name;
-          user.role = appRole;
-          user.doctorId = doctorId;
-          user.active = true;
-          return { action: "user-update-doctor-login", entityType: "user", entityId: user.id, before, after: user };
-        }
-        const created: AppUser = {
-          id: createId("user"),
-          email,
-          name: targetDoctor.name,
+    if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
+    if (!existing && !password) return setMessage("צריך להזין סיסמה ראשונית למשתמש חדש.");
+    
+    let passwordHash = existing?.passwordHash || "";
+    if (password) {
+      passwordHash = await hashPassword(password);
+    }
+    
+    setBusy(true);
+    try {
+      const nextUsers = [...workspace.users];
+      const matchIndex = nextUsers.findIndex(u => u.doctorId === doctorId);
+      
+      const userMail = username ? username + "@local" : (existing?.email || (doctor.name + "@local"));
+      
+      if (matchIndex !== -1) {
+        nextUsers[matchIndex] = {
+          ...nextUsers[matchIndex],
+          email: userMail,
+          name: doctor.name,
           role: appRole,
-          doctorId,
           active: true,
-          createdAt: new Date().toISOString()
+          passwordHash
         };
-        draft.users.push(created);
-        return { action: "user-create-doctor-login", entityType: "user", entityId: created.id, before: null, after: created };
-      },
-      note: "פרטי הכניסה נשמרו."
-    });
+      } else {
+        nextUsers.push({
+          id: createId("user"),
+          email: userMail,
+          name: doctor.name,
+          role: appRole,
+          doctorId: doctorId,
+          active: true,
+          createdAt: new Date().toISOString(),
+          passwordHash
+        });
+      }
+      
+      const updatedWorkspace = await adminSaveUsers(nextUsers);
+      setAndPersist(updatedWorkspace);
+      setMessage("פרטי הכניסה של הרופא נשמרו בשרת.");
+      
+      // Clear password draft
+      setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "השמירה נכשלה.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function removeDoctor(doctorId: string) {
@@ -615,12 +669,81 @@ export function App() {
   const ownDoctorId = appUser?.doctorId ?? "";
   const visibleExclusions = canUsePlannerTools(role) ? schedule.exclusions : schedule.exclusions.filter((item) => item.doctorId === ownDoctorId);
 
+  if (!currentUser) {
+    return (
+      <main className="shell">
+        <header className="topbar">
+          <div>
+            <h1>{workspace.workspace.name}</h1>
+            <p>חיבור למערכת סידור תורנויות מחלקתי</p>
+          </div>
+        </header>
+        
+        <section className="panel" style={{ maxWidth: "450px", margin: "40px auto", padding: "24px" }}>
+          <h2 style={{ marginBottom: "16px", textAlign: "center" }}>התחברות למערכת</h2>
+          {message ? <div className="notice" style={{ marginBottom: "16px" }}>{message}</div> : null}
+          
+          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="drive-grid" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              כתובת שרת Apps Script
+              <input dir="ltr" value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." />
+            </label>
+            
+            {!showBootstrap ? (
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  שם משתמש
+                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="Username" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  סיסמה
+                  <input type="password" dir="ltr" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password" />
+                </label>
+                <button type="submit" className="primary" disabled={busy} style={{ alignSelf: "center", width: "100%", padding: "10px", marginTop: "8px" }}>
+                  {busy ? "מתחבר..." : "התחבר"}
+                </button>
+                <div style={{ textAlign: "center", marginTop: "12px" }}>
+                  <a href="#" onClick={(e) => { e.preventDefault(); setShowBootstrap(true); setMessage(""); }} style={{ fontSize: "12px", color: "var(--color-primary-blue, #2563eb)" }}>
+                    הקמה ראשונית של המערכת (התקנה חדשה)
+                  </a>
+                </div>
+              </>
+            ) : (
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  שם משתמש מבוקש למנהל
+                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="לדוגמה: admin" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  שם מלא של המנהל
+                  <input value={plannerName} onChange={(e) => setPlannerName(e.target.value)} placeholder="שם מלא" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  סיסמה מבוקשת למנהל
+                  <input type="password" dir="ltr" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="סיסמה" />
+                </label>
+                <button type="button" onClick={handleBootstrap} className="primary" disabled={busy} style={{ alignSelf: "center", width: "100%", padding: "10px", marginTop: "8px" }}>
+                  {busy ? "מקים מערכת..." : "בצע הקמה ראשונית"}
+                </button>
+                <div style={{ textAlign: "center", marginTop: "12px" }}>
+                  <a href="#" onClick={(e) => { e.preventDefault(); setShowBootstrap(false); setMessage(""); }} style={{ fontSize: "12px", color: "var(--color-primary-blue, #2563eb)" }}>
+                    חזור למסך התחברות רגיל
+                  </a>
+                </div>
+              </>
+            )}
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
         <div>
           <h1>{workspace.workspace.name}</h1>
-          <p>Chrome-only · Google login · Drive workspace · audit trail</p>
+          <p>סידור תורנויות מחלקתי · RTL Roster Portal</p>
         </div>
         <div className="month-controls">
           <input type="number" value={month} min={1} max={12} onChange={(event) => setMonth(Number(event.target.value))} />
@@ -629,16 +752,16 @@ export function App() {
         </div>
       </header>
 
-      <LoginBar
-        clientId={clientId}
-        setClientId={setClientId}
-        session={session}
-        connect={() => run(connectAndIdentify)}
-        bootstrap={bootstrapPlanner}
-        busy={busy}
-      />
+      <section className="login-strip">
+        <div>
+          <strong>מחובר כ-{currentUser.name}</strong>
+          <span>שם משתמש: {currentUser.username}</span>
+        </div>
+        {role ? <b>{roleLabels[role]}</b> : null}
+        <button className="danger" onClick={handleLogout}><Mail size={17} />התנתק</button>
+      </section>
 
-      {session.status === "blocked" ? <BlockedUser email={session.googleUser.email} recover={recoverLocalPlanner} /> : null}
+      {session.status === "blocked" ? <BlockedUser email={currentUser.username} recover={() => setMessage("פנה למנהל המערכת כדי לקבל הרשאות מתאימות.")} /> : null}
       {message ? <div className="notice">{message}</div> : null}
 
       {role ? (
@@ -718,8 +841,10 @@ export function App() {
               setForm={setDoctorForm}
               expandedDoctorId={expandedDoctorId}
               setExpandedDoctorId={setExpandedDoctorId}
-              emailDrafts={doctorEmailDrafts}
-              setEmailDrafts={setDoctorEmailDrafts}
+              usernameDrafts={doctorUsernameDrafts}
+              setUsernameDrafts={setDoctorUsernameDrafts}
+              passwordDrafts={doctorPasswordDrafts}
+              setPasswordDrafts={setDoctorPasswordDrafts}
               roleDrafts={doctorRoleDrafts}
               setRoleDrafts={setDoctorRoleDrafts}
               addDoctor={addDoctor}
@@ -732,15 +857,11 @@ export function App() {
           {tab === "drive" && (
             <DrivePanel
               data={workspace}
-              clientId={clientId}
-              setClientId={setClientId}
-              driveFileInput={driveFileInput}
-              setDriveFileInput={setDriveFileInput}
               busy={busy}
               run={run}
               setAndPersist={setAndPersist}
               actorRole={role}
-              actor={actorFor()}
+              handleLogout={handleLogout}
             />
           )}
           {tab === "calendar" && <CalendarPanel data={workspace} schedule={schedule} calendarInput={calendarInput} setCalendarInput={setCalendarInput} dryRunCalendar={() => run(dryRunCalendar)} mockCalendarSync={() => run(mockCalendarSync)} />}
@@ -778,42 +899,11 @@ function canSeeTab(item: (typeof tabs)[number], role: AppRole | null) {
   return true;
 }
 
-function LoginBar({
-  clientId,
-  setClientId,
-  session,
-  connect,
-  bootstrap,
-  busy
-}: {
-  clientId: string;
-  setClientId: (value: string) => void;
-  session: ReturnType<typeof resolveSession>;
-  connect: () => void;
-  bootstrap: () => void;
-  busy: boolean;
-}) {
-  return (
-    <section className="login-strip">
-      <div>
-        <strong>{session.googleUser ? session.googleUser.name : "לא מחובר"}</strong>
-        <span>{session.googleUser ? session.googleUser.email : "התחבר עם Google כדי לקבל הרשאות לפי תפקיד"}</span>
-      </div>
-      {session.role ? <b>{roleLabels[session.role]}</b> : null}
-      <input dir="ltr" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="Google OAuth Client ID" />
-      <button onClick={connect} disabled={busy}><Cloud size={17} />התחבר Google</button>
-      {session.status === "bootstrap" ? <button className="primary" onClick={bootstrap}>הגדר אותי כמתכנן ראשון</button> : null}
-    </section>
-  );
-}
-
 function BlockedUser({ email, recover }: { email: string; recover: () => void }) {
   return (
     <section className="panel">
-      <h2>אין הרשאה</h2>
-      <p>החשבון {email} לא נמצא ברשימת המשתמשים. פנה למתכנן הבכיר כדי שיוסיף אותך.</p>
-      <p className="hint">אם זו ההקמה הראשונה ונתקעת בגלל נתונים מקומיים ישנים, אפשר לבצע שחזור מקומי.</p>
-      <button className="primary" onClick={recover}>שחזור מקומי והגדרה כמתכנן בכיר</button>
+      <h2>אין הרשאה במערכת</h2>
+      <p>החשבון {email} לא רשום או אינו פעיל. אנא פנה למנהל המערכת (מתכנן בכיר) על מנת להסדיר את הרשאות הגישה שלך.</p>
     </section>
   );
 }
@@ -824,6 +914,18 @@ function LockedPanel({ title, text }: { title: string; text: string }) {
 
 function InfoCell({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }) {
   return <div className={`info-cell ${tone ?? ""}`}><span>{label}</span><b>{value}</b></div>;
+}
+
+function isDoctorBlockedForAssignment(schedule: MonthSchedule, doctorId: string, date: string, roleCode: RoleCode) {
+  return schedule.exclusions.some((exclusion) =>
+    exclusion.doctorId === doctorId &&
+    exclusion.date === date &&
+    (exclusion.roleCode === roleCode || exclusion.roleCode === null)
+  );
+}
+
+function formatDoctorOption(doctor: Doctor) {
+  return `${doctor.group === "resident" ? "מתמחה · " : "בכיר · "}${doctor.name}${doctor.canAngio ? " · אנגיו" : ""}`;
 }
 
 function Roster({
@@ -900,13 +1002,17 @@ function Roster({
                   const disabled = isFridayOnlyRole(role.code) && !day.isFriday;
                   const issue = issueByCell.get(key);
                   const options = doctors.filter((doctor) => isDoctorEligibleForRole(doctor, role)).sort(doctorSortForRole(role));
+                  const availableOptions = options.filter((doctor) => !isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
+                  const blockedOptions = options.filter((doctor) => isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
                   return (
                     <td key={role.code} id={`cell-${key}`} className={`${disabled ? "disabled" : ""} ${issue ?? ""} ${focusCell === key ? "focused" : ""}`}>
                       {disabled ? <span className="blocked-cell">לא פעיל</span> : (
                         <select disabled={!editable} value={assignment.pending ? "__pending" : assignment.doctorId ?? ""} onChange={(event) => updateAssignment(day.key, role.code, event.target.value)}>
                           <option value="">לא שובץ</option>
                           <option value="__pending">ממתין</option>
-                          {options.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.group === "resident" ? "מתמחה · " : "בכיר · "}{doctor.name}{doctor.canAngio ? " · אנגיו" : ""}</option>)}
+                          {availableOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
+                          {blockedOptions.length ? <option disabled>━━ אילוצים ━━</option> : null}
+                          {blockedOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
                         </select>
                       )}
                     </td>
@@ -951,43 +1057,60 @@ function Exclusions({
   addExclusions: () => void;
   deleteExclusion: (id: string) => void;
 }) {
+  const sortedExclusions = [...exclusions].sort((a, b) =>
+    a.date.localeCompare(b.date) ||
+    String(a.roleCode ?? "").localeCompare(String(b.roleCode ?? "")) ||
+    a.doctorId.localeCompare(b.doctorId)
+  );
+
   return (
-    <section className="panel two">
-      <div>
-        <div className="toolbar"><h2>אילוצים</h2><button className="primary" onClick={addExclusions}><Plus size={17} />הוסף חסימה</button></div>
-        <div className="form-row">
-          {canChooseDoctor ? (
-            <select value={form.doctorId} onChange={(event) => setForm({ ...form, doctorId: event.target.value })}>
-              <option value="">בחר רופא</option>
-              {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
-            </select>
-          ) : <span className="readonly-chip">{doctors.find((doctor) => doctor.id === form.doctorId)?.name ?? "המשתמש לא מקושר לרופא"}</span>}
-          <div className="role-blockers">
-            {roleCodes.map((roleCode, index) => (
-              <div className="role-blocker" key={`${roleCode}-${index}`}>
-                <select value={roleCode} onChange={(event) => setRoleCodes(roleCodes.map((item, itemIndex) => itemIndex === index ? event.target.value as RoleCode : item))}>
-                  {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
-                </select>
-                {roleCodes.length > 1 ? <button aria-label="הסר תפקיד" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
-              </div>
-            ))}
-            <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />הוסף תפקיד</button>
-          </div>
-          <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / הערה" />
+    <section className="panel exclusions-panel">
+      <div className="toolbar"><h2>אילוצים</h2><button className="primary" onClick={addExclusions}><Plus size={17} />הוסף חסימה</button></div>
+      <div className="form-row">
+        {canChooseDoctor ? (
+          <select value={form.doctorId} onChange={(event) => setForm({ ...form, doctorId: event.target.value })}>
+            <option value="">בחר רופא</option>
+            {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
+          </select>
+        ) : <span className="readonly-chip">{doctors.find((doctor) => doctor.id === form.doctorId)?.name ?? "המשתמש לא מקושר לרופא"}</span>}
+        <div className="role-blockers">
+          {roleCodes.map((roleCode, index) => (
+            <div className="role-blocker" key={`${roleCode}-${index}`}>
+              <select value={roleCode} onChange={(event) => setRoleCodes(roleCodes.map((item, itemIndex) => itemIndex === index ? event.target.value as RoleCode : item))}>
+                {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
+              </select>
+              {roleCodes.length > 1 ? <button aria-label="הסר תפקיד" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
+            </div>
+          ))}
+          <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />הוסף תפקיד</button>
         </div>
-        <div className="month-picker">
-          {days.map((day) => {
-            const active = selectedDates.includes(day.key);
-            return <button key={day.key} className={active ? "selected" : ""} onClick={() => setSelectedDates(active ? selectedDates.filter((date) => date !== day.key) : [...selectedDates, day.key])}><b>{day.day}</b><span>{day.weekdayLabel}</span></button>;
-          })}
-        </div>
+        <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / הערה" />
       </div>
-      <div className="list">
-        {exclusions.map((exclusion) => {
+      <div className="month-picker">
+        {days.map((day) => {
+          const active = selectedDates.includes(day.key);
+          return <button key={day.key} className={active ? "selected" : ""} onClick={() => setSelectedDates(active ? selectedDates.filter((date) => date !== day.key) : [...selectedDates, day.key])}><b>{day.day}</b><span>{day.weekdayLabel}</span></button>;
+        })}
+      </div>
+      <div className="exclusion-review">
+        <div className="toolbar compact"><h2>אילוצים שנוספו</h2><span>{sortedExclusions.length} רשומות</span></div>
+        <div className="exclusion-card-list">
+          {sortedExclusions.length === 0 ? <div className="list-row">אין עדיין אילוצים בחודש הזה.</div> : null}
+          {sortedExclusions.map((exclusion) => {
           const doctor = doctors.find((candidate) => candidate.id === exclusion.doctorId);
           const role = roles.find((candidate) => candidate.code === exclusion.roleCode);
-          return <div className="list-row" key={exclusion.id}><span>{doctor?.name ?? "רופא לא ידוע"} · {exclusion.date} · {role?.name ?? "תפקיד לא ידוע"}{exclusion.reason ? <small> · {exclusion.reason}</small> : null}</span><button onClick={() => deleteExclusion(exclusion.id)}>מחק</button></div>;
+          return (
+            <article className="exclusion-card" key={exclusion.id}>
+              <div>
+                <b>{doctor?.name ?? "רופא לא ידוע"}</b>
+                <span>{exclusion.date} · {role?.name ?? "כל התפקידים"}</span>
+                {exclusion.reason ? <small>{exclusion.reason}</small> : null}
+              </div>
+              <button className="danger" onClick={() => deleteExclusion(exclusion.id)}><Trash2 size={16} />מחק</button>
+            </article>
+          );
         })}
+        </div>
       </div>
     </section>
   );
@@ -1073,16 +1196,16 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
     applied: "הוחל"
   };
   return labels[status];
-}
-
-function Doctors({
+}function Doctors({
   data,
   form,
   setForm,
   expandedDoctorId,
   setExpandedDoctorId,
-  emailDrafts,
-  setEmailDrafts,
+  usernameDrafts,
+  setUsernameDrafts,
+  passwordDrafts,
+  setPasswordDrafts,
   roleDrafts,
   setRoleDrafts,
   addDoctor,
@@ -1095,8 +1218,10 @@ function Doctors({
   setForm: (value: { name: string; group: Doctor["group"]; canAngio: boolean }) => void;
   expandedDoctorId: string | null;
   setExpandedDoctorId: (value: string | null) => void;
-  emailDrafts: Record<string, string>;
-  setEmailDrafts: (value: Record<string, string>) => void;
+  usernameDrafts: Record<string, string>;
+  setUsernameDrafts: (value: Record<string, string>) => void;
+  passwordDrafts: Record<string, string>;
+  setPasswordDrafts: (value: Record<string, string>) => void;
   roleDrafts: Record<string, AppRole>;
   setRoleDrafts: (value: Record<string, AppRole>) => void;
   addDoctor: () => void;
@@ -1106,7 +1231,7 @@ function Doctors({
 }) {
   return (
     <section className="panel">
-      <div className="toolbar"><h2>רופאים</h2><span>{data.doctors.length} רשומות</span></div>
+      <div className="toolbar"><h2>רופאים ומשתמשים</h2><span>{data.doctors.length} רשומות</span></div>
       <div className="form-row doctor-add-row">
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
         <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
@@ -1117,14 +1242,16 @@ function Doctors({
         {data.doctors.map((doctor) => {
           const linkedUser = data.users.find((user) => user.doctorId === doctor.id);
           const expanded = expandedDoctorId === doctor.id;
-          const email = emailDrafts[doctor.id] ?? linkedUser?.email ?? "";
+          const displayUsername = linkedUser?.email ? linkedUser.email.split('@')[0] : "";
+          const username = usernameDrafts[doctor.id] ?? displayUsername;
+          const password = passwordDrafts[doctor.id] ?? "";
           const appRole = roleDrafts[doctor.id] ?? linkedUser?.role ?? (doctor.group === "senior" ? "senior" : "resident");
           return (
             <article className={`doctor-card ${expanded ? "expanded" : ""}`} key={doctor.id} onClick={() => setExpandedDoctorId(expanded ? null : doctor.id)}>
               <div className="doctor-card-main">
                 <span>
                   <b>{doctor.name}</b>
-                  <small>{doctor.group === "resident" ? "מתמחה" : "בכיר"}{doctor.canAngio ? " · אנגיו" : ""}{linkedUser?.email ? ` · ${linkedUser.email}` : ""}</small>
+                  <small>{doctor.group === "resident" ? "מתמחה" : "בכיר"}{doctor.canAngio ? " · אנגיו" : ""}{displayUsername ? ` · שם משתמש: ${displayUsername}` : ""}</small>
                 </span>
                 <div className="row-actions">
                   <button onClick={(event) => { event.stopPropagation(); toggleDoctor(doctor.id); }}>{doctor.active ? "פעיל" : "לא פעיל"}</button>
@@ -1133,9 +1260,10 @@ function Doctors({
               </div>
               {expanded ? (
                 <div className="doctor-edit" onClick={(event) => event.stopPropagation()}>
-                  <label><Mail size={16} /> Gmail<input dir="ltr" value={email} onChange={(event) => setEmailDrafts({ ...emailDrafts, [doctor.id]: event.target.value })} placeholder="name@gmail.com" /></label>
-                  <label>הרשאה<select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור Gmail והרשאה</button>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}><Mail size={16} /> שם משתמש<input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="שם משתמש" /></label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}><Settings size={16} /> סיסמה<input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="השאר ריק לשמירה על הקודמת" /></label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה<select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <button className="primary" onClick={() => saveDoctorUser(doctor.id)} style={{ marginTop: "8px" }}>שמור פרטי משתמש</button>
                 </div>
               ) : null}
             </article>
@@ -1145,7 +1273,6 @@ function Doctors({
     </section>
   );
 }
-
 function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctors: Doctor[]; roles: Role[] }) {
   const doctorById = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
   const roleByCode = new Map(roles.map((role) => [role.code, role.name]));
@@ -1180,85 +1307,67 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
 
 function DrivePanel({
   data,
-  clientId,
-  setClientId,
-  driveFileInput,
-  setDriveFileInput,
   busy,
   run,
   setAndPersist,
   actorRole,
-  actor
+  handleLogout
 }: {
   data: WorkspaceData;
-  clientId: string;
-  setClientId: (value: string) => void;
-  driveFileInput: string;
-  setDriveFileInput: (value: string) => void;
   busy: boolean;
   run: (action: () => Promise<void>, note?: string) => Promise<void>;
   setAndPersist: (data: WorkspaceData) => void;
   actorRole: AppRole | null;
-  actor: ActorContext;
+  handleLogout: () => void;
 }) {
-  async function connect() {
-    await connectGoogle(clientId);
-    saveGoogleClientId(clientId);
-  }
-
-  function withDriveMetadata(next: WorkspaceData, metadata: Awaited<ReturnType<typeof getDriveFileMetadata>>) {
-    return {
-      ...next,
-      driveSync: {
-        ...next.driveSync,
-        fileId: metadata.id,
-        fileName: metadata.name,
-        fileUrl: metadata.webViewLink ?? next.driveSync.fileUrl,
-        lastLoadedModifiedTime: metadata.modifiedTime,
-        lastSavedModifiedTime: metadata.modifiedTime,
-        lastLoadedVersion: metadata.version ?? null,
-        lastSavedVersion: metadata.version ?? null
-      }
-    };
-  }
-
+  const credentials = getLocalCredentials();
+  
   return (
     <section className="panel">
-      <div className="toolbar"><h2>Google Drive Sync</h2><span>{hasDriveToken() ? "מחובר" : "לא מחובר"}</span></div>
-      <div className="drive-grid">
-        <label>Google OAuth Client ID<input dir="ltr" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder="xxx.apps.googleusercontent.com" /></label>
-        <button onClick={() => run(connect, "Google מחובר.")} disabled={busy}><Cloud size={17} />התחבר</button>
-        <label>Drive file URL / ID<input dir="ltr" value={driveFileInput} onChange={(event) => setDriveFileInput(event.target.value)} placeholder="https://drive.google.com/file/d/..." /></label>
-        <button onClick={() => run(async () => { const fileId = extractDriveFileId(driveFileInput); const { data: loaded, metadata } = await loadWorkspaceFromDrive(fileId); setAndPersist(withDriveMetadata(loaded, metadata)); }, "נטען מ-Google Drive.")} disabled={busy}><FolderOpen size={17} />פתח</button>
-        <button onClick={() => run(async () => {
-          const auditEntry = createAuditEntry(actor, { action: "drive-create-file", entityType: "drive", entityId: "new-drive-file", before: null, after: { fileName: data.driveSync.fileName } });
-          const metadata = await createDriveWorkspaceFile({ ...data, auditLog: [auditEntry, ...data.auditLog] });
-          setAndPersist(withDriveMetadata({ ...data, auditLog: [auditEntry, ...data.auditLog] }, metadata));
-        }, "נוצר קובץ Drive חדש.")} disabled={busy}><FileJson size={17} />צור קובץ</button>
+      <div className="toolbar">
+        <h2>חיבור וסנכרון לשרת</h2>
+        <span>מחובר כ-{roleLabels[actorRole || "resident"]}</span>
+      </div>
+      <div className="drive-grid" style={{ gridTemplateColumns: "1fr auto auto auto", gap: "10px" }}>
+        <label>כתובת שרת Apps Script
+          <input dir="ltr" value={getWebAppUrl()} disabled placeholder="https://script.google.com/macros/s/..." />
+        </label>
+        <button onClick={handleLogout} className="danger" style={{ alignSelf: "end" }}><Mail size={17} />התנתק</button>
+        
         <button
           className="primary"
+          style={{ alignSelf: "end" }}
           onClick={() => run(async () => {
-            if (!data.driveSync.fileId) throw new Error("אין קובץ Drive מחובר.");
-            const remote = await getDriveFileMetadata(data.driveSync.fileId);
-            const remoteChanged = data.driveSync.lastLoadedModifiedTime && remote.modifiedTime !== data.driveSync.lastLoadedModifiedTime;
+            const remote = await loadWorkspace();
+            const remoteChanged = data.updatedAt && remote.updatedAt !== data.updatedAt;
             if (remoteChanged) {
-              if (actorRole !== "senior-planner") throw new Error("הקובץ ב-Drive השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
-              const overwrite = window.confirm("הקובץ ב-Drive השתנה מאז הטעינה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
+              if (actorRole !== "senior-planner") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
+              const overwrite = window.confirm("הקובץ בשרת השתנה מאז הטעינה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
               if (!overwrite) return;
             }
-            const auditEntry = createAuditEntry(actor, { action: remoteChanged ? "drive-force-save" : "drive-save", entityType: "drive", entityId: data.driveSync.fileId, before: { remote }, after: { localUpdatedAt: data.updatedAt } });
-            const metadata = await saveWorkspaceToDrive(data.driveSync.fileId, { ...data, auditLog: [auditEntry, ...data.auditLog] });
-            setAndPersist(withDriveMetadata({ ...data, auditLog: [auditEntry, ...data.auditLog] }, metadata));
-          }, "נשמר ל-Google Drive.")}
+            const saved = await saveWorkspace(data);
+            setAndPersist(saved);
+          }, "הנתונים נשמרו בהצלחה בשרת.")}
           disabled={busy}
-        ><Save size={17} />שמור ל-Drive</button>
-        <button onClick={() => run(async () => { if (!data.driveSync.fileId) throw new Error("אין קובץ Drive מחובר."); const { data: loaded, metadata } = await loadWorkspaceFromDrive(data.driveSync.fileId); setAndPersist(withDriveMetadata(loaded, metadata)); }, "רוענן מ-Google Drive.")} disabled={busy}><RefreshCw size={17} />טען מ-Drive</button>
+        >
+          <Save size={17} />שמור שינויים לשרת
+        </button>
+        
+        <button
+          style={{ alignSelf: "end" }}
+          onClick={() => run(async () => {
+            const loaded = await loadWorkspace();
+            setAndPersist(loaded);
+          }, "הנתונים רועננו מהשרת.")}
+          disabled={busy}
+        >
+          <RefreshCw size={17} />טען מחדש מהשרת
+        </button>
       </div>
       <div className="list">
-        <div className="list-row"><span>קובץ</span><b dir="ltr">{data.driveSync.fileName}</b></div>
-        <div className="list-row"><span>File ID</span><b dir="ltr">{data.driveSync.fileId ?? "לא נוצר"}</b></div>
-        <div className="list-row"><span>גרסת Drive</span><b>{data.driveSync.lastLoadedVersion ?? "לא ידוע"}</b></div>
-        <div className="list-row"><span>שמירה אחרונה</span><b>{data.driveSync.lastSavedModifiedTime ? new Date(data.driveSync.lastSavedModifiedTime).toLocaleString("he-IL") : "טרם נשמר"}</b></div>
+        <div className="list-row"><span>שם משתמש מחובר</span><b dir="ltr">{credentials.username}</b></div>
+        <div className="list-row"><span>כתובת שרת</span><b dir="ltr" className="truncate">{getWebAppUrl()}</b></div>
+        <div className="list-row"><span>עדכון אחרון בשרת</span><b>{data.updatedAt ? new Date(data.updatedAt).toLocaleString("he-IL") : "טרם נשמר"}</b></div>
       </div>
     </section>
   );

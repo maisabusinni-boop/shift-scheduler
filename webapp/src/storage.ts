@@ -7,7 +7,17 @@ const CLIENT_ID_KEY = "department-shift-scheduler.google-client-id";
 const DEVICE_ID_KEY = "department-shift-scheduler.device-id";
 export const DEFAULT_GOOGLE_CLIENT_ID = "264155836518-nqcoltph397ta3ua8hpemsegk3v5o5ck.apps.googleusercontent.com";
 
+function consumeResetFlag() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("reset") !== "1") return;
+  localStorage.removeItem(STORAGE_KEY);
+  params.delete("reset");
+  const nextSearch = params.toString();
+  window.history.replaceState({}, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`);
+}
+
 export function loadLocalWorkspace(): WorkspaceData {
+  consumeResetFlag();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     const sample = createSampleWorkspace();
