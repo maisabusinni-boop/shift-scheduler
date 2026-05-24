@@ -83,22 +83,22 @@ import "./styles.css";
 type TabId = "published-roster" | "roster" | "exclusions" | "requests" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
-  { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
-  { id: "roster", label: "טיוטת סידור", icon: Table2, draftPlanner: true },
-  { id: "exclusions", label: "אילוצים", icon: FileWarning },
-  { id: "requests", label: "שינוי תורנות", icon: UserCheck },
-  { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
-  { id: "audit", label: "יומן פעולות", icon: History, audit: true },
-  { id: "drive", label: "חיבור שרת", icon: Cloud, plannerOnly: true },
-  { id: "calendar", label: "יומן Google", icon: CalendarCheck, plannerOnly: true },
-  { id: "settings", label: "הגדרות / יבוא", icon: Settings, plannerOnly: true }
+  { id: "published-roster", label: "×œ×•×— ×ª×•×¨× ×•×™×•×ª", icon: Table2, scheduleEditor: true },
+  { id: "roster", label: "×˜×™×•×˜×ª ×¡×™×“×•×¨", icon: Table2, draftPlanner: true },
+  { id: "exclusions", label: "××™×œ×•×¦×™×", icon: FileWarning },
+  { id: "requests", label: "×©×™× ×•×™ ×ª×•×¨× ×•×ª", icon: UserCheck },
+  { id: "doctors", label: "×¨×•×¤××™× ×•×ž×©×ª×ž×©×™×", icon: Users, plannerOnly: true },
+  { id: "audit", label: "×™×•×ž×Ÿ ×¤×¢×•×œ×•×ª", icon: History, audit: true },
+  { id: "drive", label: "×—×™×‘×•×¨ ×©×¨×ª", icon: Cloud, plannerOnly: true },
+  { id: "calendar", label: "×™×•×ž×Ÿ Google", icon: CalendarCheck, plannerOnly: true },
+  { id: "settings", label: "×”×’×“×¨×•×ª / ×™×‘×•×", icon: Settings, plannerOnly: true }
 ];
 
 const roleLabels: Record<AppRole, string> = {
-  resident: "מתמחה",
-  senior: "בכיר",
-  "chief-resident": "צ׳יף מתמחים",
-  "senior-planner": "מתכנן בכיר"
+  resident: "×ž×ª×ž×—×”",
+  senior: "×‘×›×™×¨",
+  "chief-resident": "×¦×³×™×£ ×ž×ª×ž×—×™×",
+  "senior-planner": "×ž×ª×›× ×Ÿ ×‘×›×™×¨"
 };
 
 const current = new Date();
@@ -136,7 +136,7 @@ export function App() {
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
-  const [swapModalCell, setSwapModalCell] = useState<{ date: string; roleCode: RoleCode; giverDoctorId: string } | null>(null);
+  const [swapModalCell, setSwapModalCell] = useState<{ date: string; roleCode: RoleCode; giverDoctorId: string; targetDoctorId?: string } | null>(null);
   const [swapTargetDoctorId, setSwapTargetDoctorId] = useState("");
   const [swapReason, setSwapReason] = useState("");
   const lastSavedVersionRef = useRef<string | null>(null);
@@ -206,14 +206,14 @@ export function App() {
       await action();
       if (note) setMessage(note);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "הפעולה נכשלה.");
+      setMessage(error instanceof Error ? error.message : "×”×¤×¢×•×œ×” × ×›×©×œ×”.");
     } finally {
       setBusy(false);
     }
   }
 
   function requireUser() {
-    if (!appUser) throw new Error("צריך להתחבר כמשתמש מוכר.");
+    if (!appUser) throw new Error("×¦×¨×™×š ×œ×”×ª×—×‘×¨ ×›×ž×©×ª×ž×© ×ž×•×›×¨.");
     return appUser;
   }
 
@@ -223,7 +223,7 @@ export function App() {
         const remoteData = await loadWorkspace();
         lastSavedVersionRef.current = remoteData.updatedAt;
         setData(remoteData);
-      }, "הנתונים נטענו מחדש מהשרת.");
+      }, "×”× ×ª×•× ×™× × ×˜×¢× ×• ×ž×—×“×© ×ž×”×©×¨×ª.");
     }
   }, []);
 
@@ -250,7 +250,7 @@ export function App() {
         setAndPersist(saved, true);
       } catch (err) {
         console.error("Autosave failed: ", err);
-        setMessage("שמירה אוטומטית נכשלה: " + (err instanceof Error ? err.message : String(err)));
+        setMessage("×©×ž×™×¨×” ××•×˜×•×ž×˜×™×ª × ×›×©×œ×”: " + (err instanceof Error ? err.message : String(err)));
       }
     }, 1500);
     
@@ -271,9 +271,9 @@ export function App() {
   }, [data, currentUser]);
 
   async function handleLogin() {
-    if (!loginUrl) return setMessage("נא להזין את כתובת השרת.");
-    if (!loginUsername) return setMessage("נא להזין שם משתמש.");
-    if (!loginPassword) return setMessage("נא להזין סיסמה.");
+    if (!loginUrl) return setMessage("× × ×œ×”×–×™×Ÿ ××ª ×›×ª×•×‘×ª ×”×©×¨×ª.");
+    if (!loginUsername) return setMessage("× × ×œ×”×–×™×Ÿ ×©× ×ž×©×ª×ž×©.");
+    if (!loginPassword) return setMessage("× × ×œ×”×–×™×Ÿ ×¡×™×¡×ž×”.");
     
     setBusy(true);
     setMessage("");
@@ -284,11 +284,11 @@ export function App() {
       lastSavedVersionRef.current = loaded.updatedAt;
       setData(loaded);
       setCurrentUser({ username: loginUsername, name: appUser.name });
-      setMessage("התחברת בהצלחה!");
+      setMessage("×”×ª×—×‘×¨×ª ×‘×”×¦×œ×—×”!");
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "ההתחברות נכשלה.";
-      if (errorMsg.includes("לא נמצא") || errorMsg.includes("שם משתמש או סיסמה") || errorMsg.includes("שגויים")) {
-        setMessage(`${errorMsg}. אם זו הפעם הראשונה שאתה מחבר את השרת, לחץ על 'הקמה ראשונית' למטה.`);
+      const errorMsg = err instanceof Error ? err.message : "×”×”×ª×—×‘×¨×•×ª × ×›×©×œ×”.";
+      if (errorMsg.includes("×œ× × ×ž×¦×") || errorMsg.includes("×©× ×ž×©×ª×ž×© ××• ×¡×™×¡×ž×”") || errorMsg.includes("×©×’×•×™×™×")) {
+        setMessage(`${errorMsg}. ×× ×–×• ×”×¤×¢× ×”×¨××©×•× ×” ×©××ª×” ×ž×—×‘×¨ ××ª ×”×©×¨×ª, ×œ×—×¥ ×¢×œ '×”×§×ž×” ×¨××©×•× ×™×ª' ×œ×ž×˜×”.`);
       } else {
         setMessage(errorMsg);
       }
@@ -298,10 +298,10 @@ export function App() {
   }
 
   async function handleBootstrap() {
-    if (!loginUrl) return setMessage("נא להזין את כתובת השרת.");
-    if (!loginUsername) return setMessage("נא להזין שם משתמש מבוקש.");
-    if (!loginPassword) return setMessage("נא להזין סיסמה מבוקשת.");
-    if (!plannerName) return setMessage("נא להזין את השם המלא שלך.");
+    if (!loginUrl) return setMessage("× × ×œ×”×–×™×Ÿ ××ª ×›×ª×•×‘×ª ×”×©×¨×ª.");
+    if (!loginUsername) return setMessage("× × ×œ×”×–×™×Ÿ ×©× ×ž×©×ª×ž×© ×ž×‘×•×§×©.");
+    if (!loginPassword) return setMessage("× × ×œ×”×–×™×Ÿ ×¡×™×¡×ž×” ×ž×‘×•×§×©×ª.");
+    if (!plannerName) return setMessage("× × ×œ×”×–×™×Ÿ ××ª ×”×©× ×”×ž×œ× ×©×œ×š.");
     
     setBusy(true);
     setMessage("");
@@ -311,9 +311,9 @@ export function App() {
       lastSavedVersionRef.current = result.data.updatedAt;
       setData(result.data);
       setCurrentUser({ username: loginUsername, name: result.user.name });
-      setMessage("המערכת הוקמה בהצלחה! הוגדרת כמתכנן בכיר.");
+      setMessage("×”×ž×¢×¨×›×ª ×”×•×§×ž×” ×‘×”×¦×œ×—×”! ×”×•×’×“×¨×ª ×›×ž×ª×›× ×Ÿ ×‘×›×™×¨.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "ההקמה נכשלה.");
+      setMessage(err instanceof Error ? err.message : "×”×”×§×ž×” × ×›×©×œ×”.");
     } finally {
       setBusy(false);
     }
@@ -323,12 +323,12 @@ export function App() {
     clearLocalCredentials();
     setCurrentUser(null);
     setLoginPassword("");
-    setMessage("התנתקת בהצלחה.");
+    setMessage("×”×ª× ×ª×§×ª ×‘×”×¦×œ×—×”.");
   }
 
   function updateAssignment(date: string, roleCode: RoleCode, value: string) {
     if (!canEditRoster(role, schedule)) {
-      setMessage("רק צ׳יף או מתכנן בכיר יכולים לערוך טיוטת שיבוץ.");
+      setMessage("×¨×§ ×¦×³×™×£ ××• ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ×™× ×œ×¢×¨×•×š ×˜×™×•×˜×ª ×©×™×‘×•×¥.");
       return;
     }
     commitChange({
@@ -356,12 +356,12 @@ export function App() {
           after: Object.fromEntries(uniqueKeys.map((item) => [item, currentSchedule.assignments[item]]))
         };
       },
-      note: "נשמר מקומית."
+      note: "× ×©×ž×¨ ×ž×§×•×ž×™×ª."
     });
   }
 
   function validateCurrent() {
-    if (!canEditDraftRoster(role)) return setMessage("אין הרשאה להריץ בדיקה.");
+    if (!canEditDraftRoster(role)) return setMessage("××™×Ÿ ×”×¨×©××” ×œ×”×¨×™×¥ ×‘×“×™×§×”.");
     commitChange({
       mutator: (draft, currentSchedule) => {
         const before = currentSchedule.validation;
@@ -379,15 +379,15 @@ export function App() {
           after: currentSchedule.validation
         };
       },
-      note: "הבדיקה הושלמה."
+      note: "×”×‘×“×™×§×” ×”×•×©×œ×ž×”."
     });
   }
 
   function autoGenerateRoster() {
-    if (!canEditDraftRoster(role)) return setMessage("רק מנהל או צ'יף יכולים לערוך את הסידור.");
+    if (!canEditDraftRoster(role)) return setMessage("×¨×§ ×ž× ×”×œ ××• ×¦'×™×£ ×™×›×•×œ×™× ×œ×¢×¨×•×š ××ª ×”×¡×™×“×•×¨.");
     
     const activeDoctors = workspace.doctors.filter(d => d.active);
-    if (activeDoctors.length === 0) return setMessage("אין רופאים פעילים במערכת. אנא הוסף או טען רופאים תחילה.");
+    if (activeDoctors.length === 0) return setMessage("××™×Ÿ ×¨×•×¤××™× ×¤×¢×™×œ×™× ×‘×ž×¢×¨×›×ª. ×× × ×”×•×¡×£ ××• ×˜×¢×Ÿ ×¨×•×¤××™× ×ª×—×™×œ×”.");
     
     const priorityRoles = [
       ROLE_CODES.ANGIO,
@@ -510,36 +510,36 @@ export function App() {
           after: newAssignments
         };
       },
-      note: "השיבוץ האוטומטי הושלם בהצלחה!"
+      note: "×”×©×™×‘×•×¥ ×”××•×˜×•×ž×˜×™ ×”×•×©×œ× ×‘×”×¦×œ×—×”!"
     });
   }
 
   async function loadTestData() {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לטעון נתוני בדיקה.");
+    if (!canManageUsers(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ×˜×¢×•×Ÿ × ×ª×•× ×™ ×‘×“×™×§×”.");
     setBusy(true);
     try {
       const testDoctors: Doctor[] = [
-        { id: "doc-res-1", name: 'ד"ר מיכל כהן', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-2", name: 'ד"ר דוד לוי', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-3", name: 'ד"ר שירה מזרחי', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-4", name: 'ד"ר יוסף פרץ', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-5", name: 'ד"ר רחל ביטון', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-6", name: 'ד"ר משה דהן', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-7", name: 'ד"ר אסתר אברהם', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-8", name: 'ד"ר חיים אזולאי', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-9", name: 'ד"ר חנה חסן', group: "resident", canAngio: false, active: true },
-        { id: "doc-res-10", name: 'ד"ר שמעון עמר', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-1", name: '×“"×¨ ×ž×™×›×œ ×›×”×Ÿ', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-2", name: '×“"×¨ ×“×•×“ ×œ×•×™', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-3", name: '×“"×¨ ×©×™×¨×” ×ž×–×¨×—×™', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-4", name: '×“"×¨ ×™×•×¡×£ ×¤×¨×¥', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-5", name: '×“"×¨ ×¨×—×œ ×‘×™×˜×•×Ÿ', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-6", name: '×“"×¨ ×ž×©×” ×“×”×Ÿ', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-7", name: '×“"×¨ ××¡×ª×¨ ××‘×¨×”×', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-8", name: '×“"×¨ ×—×™×™× ××–×•×œ××™', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-9", name: '×“"×¨ ×—× ×” ×—×¡×Ÿ', group: "resident", canAngio: false, active: true },
+        { id: "doc-res-10", name: '×“"×¨ ×©×ž×¢×•×Ÿ ×¢×ž×¨', group: "resident", canAngio: false, active: true },
         
-        { id: "doc-sen-1", name: 'ד"ר אהרן אבני', group: "senior", canAngio: true, active: true },
-        { id: "doc-sen-2", name: 'ד"ר ברק גונן', group: "senior", canAngio: true, active: true },
-        { id: "doc-sen-3", name: 'ד"ר שרה רוזן', group: "senior", canAngio: false, active: true },
-        { id: "doc-sen-4", name: 'ד"ר דניאל שמידט', group: "senior", canAngio: true, active: true },
-        { id: "doc-sen-5", name: 'ד"ר לאה קליין', group: "senior", canAngio: false, active: true },
-        { id: "doc-sen-6", name: 'ד"ר גבריאל מילר', group: "senior", canAngio: true, active: true },
-        { id: "doc-sen-7", name: 'ד"ר מרים גולדשטיין', group: "senior", canAngio: false, active: true },
-        { id: "doc-sen-8", name: 'ד"ר אליעזר כץ', group: "senior", canAngio: false, active: true },
-        { id: "doc-sen-9", name: 'ד"ר רות פרידמן', group: "senior", canAngio: false, active: true },
-        { id: "doc-sen-10", name: 'ד"ר שמואל לוין', group: "senior", canAngio: false, active: true }
+        { id: "doc-sen-1", name: '×“"×¨ ××”×¨×Ÿ ××‘× ×™', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-2", name: '×“"×¨ ×‘×¨×§ ×’×•× ×Ÿ', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-3", name: '×“"×¨ ×©×¨×” ×¨×•×–×Ÿ', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-4", name: '×“"×¨ ×“× ×™××œ ×©×ž×™×“×˜', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-5", name: '×“"×¨ ×œ××” ×§×œ×™×™×Ÿ', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-6", name: '×“"×¨ ×’×‘×¨×™××œ ×ž×™×œ×¨', group: "senior", canAngio: true, active: true },
+        { id: "doc-sen-7", name: '×“"×¨ ×ž×¨×™× ×’×•×œ×“×©×˜×™×™×Ÿ', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-8", name: '×“"×¨ ××œ×™×¢×–×¨ ×›×¥', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-9", name: '×“"×¨ ×¨×•×ª ×¤×¨×™×“×ž×Ÿ', group: "senior", canAngio: false, active: true },
+        { id: "doc-sen-10", name: '×“"×¨ ×©×ž×•××œ ×œ×•×™×Ÿ', group: "senior", canAngio: false, active: true }
       ];
 
       const hash = await hashPassword("203-mais");
@@ -549,7 +549,7 @@ export function App() {
       cleanUsers.push({
         id: "user-mais",
         email: "mais@local",
-        name: "מאיס",
+        name: "×ž××™×¡",
         role: "senior-planner",
         doctorId: null,
         active: true,
@@ -559,16 +559,16 @@ export function App() {
 
       const updatedWorkspace = await adminSaveUsers(cleanUsers, testDoctors);
       setAndPersist(updatedWorkspace, true);
-      setMessage("20 רופאי בדיקה והמשתמש mais (סיסמה: 203-mais) נטענו בהצלחה מחשבון השרת!");
+      setMessage("20 ×¨×•×¤××™ ×‘×“×™×§×” ×•×”×ž×©×ª×ž×© mais (×¡×™×¡×ž×”: 203-mais) × ×˜×¢× ×• ×‘×”×¦×œ×—×” ×ž×—×©×‘×•×Ÿ ×”×©×¨×ª!");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "טעינת נתוני בדיקה נכשלה.");
+      setMessage(err instanceof Error ? err.message : "×˜×¢×™× ×ª × ×ª×•× ×™ ×‘×“×™×§×” × ×›×©×œ×”.");
     } finally {
       setBusy(false);
     }
   }
 
   function publishCurrent() {
-    if (!canPublish(role)) return setMessage("רק מתכנן בכיר יכול לפרסם.");
+    if (!canPublish(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ×¤×¨×¡×.");
     const issues = validateSchedule(schedule, workspace.roles, workspace.doctors);
     if (issues.some((issue) => issue.severity === "error")) {
       commitChange({
@@ -577,7 +577,7 @@ export function App() {
           currentSchedule.validation = { checkedAt: new Date().toISOString(), stale: false, issues };
           return { action: "publish-blocked", entityType: "schedule", entityId: currentSchedule.key, scheduleKey: currentSchedule.key, before, after: currentSchedule.validation };
         },
-        note: "אי אפשר לפרסם לפני תיקון שגיאות."
+        note: "××™ ××¤×©×¨ ×œ×¤×¨×¡× ×œ×¤× ×™ ×ª×™×§×•×Ÿ ×©×’×™××•×ª."
       });
       return;
     }
@@ -596,28 +596,28 @@ export function App() {
           after: { status: currentSchedule.status, snapshots: currentSchedule.publishSnapshots.length }
         };
       },
-      note: "החודש פורסם."
+      note: "×”×—×•×“×© ×¤×•×¨×¡×."
     });
   }
 
   function unpublishCurrent() {
-    if (!canPublish(role)) return setMessage("רק מתכנן בכיר יכול להחזיר לטיוטה.");
+    if (!canPublish(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ×”×—×–×™×¨ ×œ×˜×™×•×˜×”.");
     commitChange({
       mutator: (_draft, currentSchedule) => {
         const before = currentSchedule.status;
         currentSchedule.status = "draft";
         return { action: "schedule-unpublish", entityType: "schedule", entityId: currentSchedule.key, scheduleKey: currentSchedule.key, before, after: currentSchedule.status };
       },
-      note: "החודש הוחזר לטיוטה."
+      note: "×”×—×•×“×© ×”×•×—×–×¨ ×œ×˜×™×•×˜×”."
     });
   }
 
   function addExclusions() {
-    if (!appUser || !canEditOwnRecords(role)) return setMessage("צריך להתחבר כדי להוסיף אילוצים.");
+    if (!appUser || !canEditOwnRecords(role)) return setMessage("×¦×¨×™×š ×œ×”×ª×—×‘×¨ ×›×“×™ ×œ×”×•×¡×™×£ ××™×œ×•×¦×™×.");
     const doctorId = canUsePlannerTools(role) ? exclusionForm.doctorId : appUser.doctorId ?? "";
     const roleCodes = Array.from(new Set(exclusionRoleCodes.filter(Boolean)));
-    if (!doctorId || !selectedDates.length || !roleCodes.length) return setMessage("צריך לבחור רופא, תאריך ותפקיד אחד לפחות.");
-    if (!canUsePlannerTools(role) && !isOwnDoctor(appUser, sessionDoctor, doctorId)) return setMessage("אפשר לערוך רק אילוצים שלך.");
+    if (!doctorId || !selectedDates.length || !roleCodes.length) return setMessage("×¦×¨×™×š ×œ×‘×—×•×¨ ×¨×•×¤×, ×ª××¨×™×š ×•×ª×¤×§×™×“ ××—×“ ×œ×¤×—×•×ª.");
+    if (!canUsePlannerTools(role) && !isOwnDoctor(appUser, sessionDoctor, doctorId)) return setMessage("××¤×©×¨ ×œ×¢×¨×•×š ×¨×§ ××™×œ×•×¦×™× ×©×œ×š.");
     commitChange({
       mutator: (_draft, currentSchedule) => {
         const created = selectedDates.flatMap((date) =>
@@ -642,7 +642,7 @@ export function App() {
           after: created
         };
       },
-      note: "האילוצים נוספו."
+      note: "×”××™×œ×•×¦×™× × ×•×¡×¤×•."
     });
     setSelectedDates([]);
     setExclusionForm({ doctorId: canUsePlannerTools(role) ? "" : doctorId, reason: "" });
@@ -655,32 +655,32 @@ export function App() {
         const target = currentSchedule.exclusions.find((item) => item.id === id);
         if (!target) return;
         if (!canUsePlannerTools(role) && !isOwnDoctor(appUser, sessionDoctor, target.doctorId)) {
-          throw new Error("אפשר למחוק רק אילוצים שלך.");
+          throw new Error("××¤×©×¨ ×œ×ž×—×•×§ ×¨×§ ××™×œ×•×¦×™× ×©×œ×š.");
         }
         currentSchedule.exclusions = currentSchedule.exclusions.filter((exclusion) => exclusion.id !== id);
         currentSchedule.validation.stale = true;
         return { action: "exclusion-delete", entityType: "exclusion", entityId: id, scheduleKey: currentSchedule.key, before: target, after: null };
       },
-      note: "האילוץ נמחק."
+      note: "×”××™×œ×•×¥ × ×ž×—×§."
     });
   }
 
   function addDoctor() {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל רופאים.");
-    if (!doctorForm.name.trim()) return setMessage("צריך שם רופא.");
+    if (!canManageUsers(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ× ×”×œ ×¨×•×¤××™×.");
+    if (!doctorForm.name.trim()) return setMessage("×¦×¨×™×š ×©× ×¨×•×¤×.");
     commitChange({
       mutator: (draft) => {
         const doctor: Doctor = { id: createId("doctor"), name: doctorForm.name.trim(), group: doctorForm.group, canAngio: doctorForm.canAngio, active: true };
         draft.doctors.push(doctor);
         return { action: "doctor-create", entityType: "doctor", entityId: doctor.id, before: null, after: doctor };
       },
-      note: "הרופא נוסף."
+      note: "×”×¨×•×¤× × ×•×¡×£."
     });
     setDoctorForm({ name: "", group: "resident", canAngio: false });
   }
 
   function toggleDoctor(doctorId: string) {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל רופאים.");
+    if (!canManageUsers(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ× ×”×œ ×¨×•×¤××™×.");
     commitChange({
       mutator: (draft, currentSchedule) => {
         const doctor = draft.doctors.find((candidate) => candidate.id === doctorId);
@@ -690,17 +690,17 @@ export function App() {
         currentSchedule.validation.stale = true;
         return { action: "doctor-toggle-active", entityType: "doctor", entityId: doctorId, before, after: doctor };
       },
-      note: "עודכן."
+      note: "×¢×•×“×›×Ÿ."
     });
   }
 
   async function saveDoctorUser(doctorId: string) {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל משתמשים.");
+    if (!canManageUsers(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ× ×”×œ ×ž×©×ª×ž×©×™×.");
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
-    if (!doctor) return setMessage("הרופא לא נמצא.");
+    if (!doctor) return setMessage("×”×¨×•×¤× ×œ× × ×ž×¦×.");
     
     const newName = (doctorNameDrafts[doctorId] ?? doctor.name).trim();
-    if (!newName) return setMessage("שם הרופא לא יכול להיות ריק.");
+    if (!newName) return setMessage("×©× ×”×¨×•×¤× ×œ× ×™×›×•×œ ×œ×”×™×•×ª ×¨×™×§.");
     const newGroup = doctorGroupDrafts[doctorId] ?? doctor.group;
     const newCanAngio = doctorAngioDrafts[doctorId] ?? doctor.canAngio;
     
@@ -709,8 +709,8 @@ export function App() {
     const appRole = doctorRoleDrafts[doctorId] ?? (newGroup === "senior" ? "senior" : "resident");
     
     const existing = workspace.users.find((user) => user.doctorId === doctorId);
-    if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
-    if (!existing && !password) return setMessage("צריך להזין סיסמה ראשונית למשתמש חדש.");
+    if (!username && !existing) return setMessage("×¦×¨×™×š ×œ×”×–×™×Ÿ ×©× ×ž×©×ª×ž×© ×œ×¨×•×¤×.");
+    if (!existing && !password) return setMessage("×¦×¨×™×š ×œ×”×–×™×Ÿ ×¡×™×¡×ž×” ×¨××©×•× ×™×ª ×œ×ž×©×ª×ž×© ×—×“×©.");
     
     let passwordHash = existing?.passwordHash || "";
     if (password) {
@@ -759,22 +759,22 @@ export function App() {
       
       const updatedWorkspace = await adminSaveUsers(nextUsers, nextDoctors);
       setAndPersist(updatedWorkspace, true);
-      setMessage("פרטי הרופא והמשתמש עודכנו בהצלחה בשרת.");
+      setMessage("×¤×¨×˜×™ ×”×¨×•×¤× ×•×”×ž×©×ª×ž×© ×¢×•×“×›× ×• ×‘×”×¦×œ×—×” ×‘×©×¨×ª.");
       
       // Clear password draft
       setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "השמירה נכשלה.");
+      setMessage(err instanceof Error ? err.message : "×”×©×ž×™×¨×” × ×›×©×œ×”.");
     } finally {
       setBusy(false);
     }
   }
 
   function removeDoctor(doctorId: string) {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל רופאים.");
+    if (!canManageUsers(role)) return setMessage("×¨×§ ×ž×ª×›× ×Ÿ ×‘×›×™×¨ ×™×›×•×œ ×œ× ×”×œ ×¨×•×¤××™×.");
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
     if (!doctor) return;
-    const confirmed = window.confirm(`להסיר את ${doctor.name}? השיבוצים והאילוצים שלו יימחקו מהנתונים המקומיים.`);
+    const confirmed = window.confirm(`×œ×”×¡×™×¨ ××ª ${doctor.name}? ×”×©×™×‘×•×¦×™× ×•×”××™×œ×•×¦×™× ×©×œ×• ×™×™×ž×—×§×• ×ž×”× ×ª×•× ×™× ×”×ž×§×•×ž×™×™×.`);
     if (!confirmed) return;
     commitChange({
       mutator: (draft) => {
@@ -802,15 +802,15 @@ export function App() {
         ));
         return { action: "doctor-remove", entityType: "doctor", entityId: doctorId, before, after: null };
       },
-      note: "הרופא הוסר."
+      note: "×”×¨×•×¤× ×”×•×¡×¨."
     });
     setExpandedDoctorId((current) => (current === doctorId ? null : current));
   }
 
   function submitRequest() {
     const user = requireUser();
-    if (!user.doctorId) return setMessage("המשתמש לא מקושר לרופא.");
-    if (!requestForm.date || !requestForm.roleCode) return setMessage("צריך תאריך ותפקיד.");
+    if (!user.doctorId) return setMessage("×”×ž×©×ª×ž×© ×œ× ×ž×§×•×©×¨ ×œ×¨×•×¤×.");
+    if (!requestForm.date || !requestForm.roleCode) return setMessage("×¦×¨×™×š ×ª××¨×™×š ×•×ª×¤×§×™×“.");
     commitChange({
       mutator: (_draft, currentSchedule) => {
         const request = createChangeRequest({
@@ -824,13 +824,13 @@ export function App() {
         _draft.changeRequests.unshift(request);
         return { action: "request-create", entityType: "request", entityId: request.id, scheduleKey: currentSchedule.key, date: request.date, roleCode: request.roleCode, before: null, after: request };
       },
-      note: "בקשת שינוי נרשמה."
+      note: "×‘×§×©×ª ×©×™× ×•×™ × ×¨×©×ž×”."
     });
     setRequestForm({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL, proposedDoctorId: "", reason: "" });
   }
 
   function decideRequest(requestId: string, decision: "approve" | "reject") {
-    if (!canReviewRequests(role)) return setMessage("אין הרשאה לטפל בבקשות.");
+    if (!canReviewRequests(role)) return setMessage("××™×Ÿ ×”×¨×©××” ×œ×˜×¤×œ ×‘×‘×§×©×•×ª.");
     commitChange({
       mutator: (draft) => {
         const request = draft.changeRequests.find((item) => item.id === requestId);
@@ -842,13 +842,13 @@ export function App() {
         request.updatedAt = request.decidedAt;
         return { action: `request-${decision}`, entityType: "request", entityId: request.id, scheduleKey: request.scheduleKey, date: request.date, roleCode: request.roleCode, before, after: request };
       },
-      note: decision === "approve" ? "הבקשה אושרה." : "הבקשה נדחתה."
+      note: decision === "approve" ? "×”×‘×§×©×” ××•×©×¨×”." : "×”×‘×§×©×” × ×“×—×ª×”."
     });
   }
 
   function applyRequest(requestId: string) {
     const request = workspace.changeRequests.find((item) => item.id === requestId);
-    if (!request || !canApplyRequest(role, request)) return setMessage("אין הרשאה להחיל בקשה.");
+    if (!request || !canApplyRequest(role, request)) return setMessage("××™×Ÿ ×”×¨×©××” ×œ×”×—×™×œ ×‘×§×©×”.");
     commitChange({
       mutator: (draft) => {
         const targetRequest = draft.changeRequests.find((item) => item.id === requestId);
@@ -876,7 +876,7 @@ export function App() {
           after: { request: targetRequest, assignment: targetSchedule.assignments[assignmentKey] }
         };
       },
-      note: "הבקשה הוחלה על השיבוץ."
+      note: "×”×‘×§×©×” ×”×•×—×œ×” ×¢×œ ×”×©×™×‘×•×¥."
     });
   }
 
@@ -888,12 +888,12 @@ export function App() {
         draft.calendar = { ...draft.calendar, calendarInput, calendarId: normalizeCalendarId(calendarInput), lastDryRun: preview };
         return { action: "calendar-dry-run", entityType: "calendar", entityId: "calendar", scheduleKey: key, before, after: draft.calendar };
       },
-      note: "תצוגת יומן נוצרה."
+      note: "×ª×¦×•×’×ª ×™×•×ž×Ÿ × ×•×¦×¨×”."
     });
   }
 
   async function mockCalendarSync() {
-    if (schedule.status !== "published") return setMessage("טיוטה לא מסתנכרנת ליומן.");
+    if (schedule.status !== "published") return setMessage("×˜×™×•×˜×” ×œ× ×ž×¡×ª× ×›×¨× ×ª ×œ×™×•×ž×Ÿ.");
     const preview = await buildCalendarPreview(schedule, workspace.roles, workspace);
     commitChange({
       mutator: (draft, currentSchedule) => {
@@ -907,7 +907,7 @@ export function App() {
         currentSchedule.lastSyncedAt = new Date().toISOString();
         return { action: "calendar-mock-sync", entityType: "calendar", entityId: "calendar", scheduleKey: currentSchedule.key, before, after: { calendar: draft.calendar, lastSyncedAt: currentSchedule.lastSyncedAt } };
       },
-      note: "סנכרון יומן מדומה נרשם."
+      note: "×¡× ×›×¨×•×Ÿ ×™×•×ž×Ÿ ×ž×“×•×ž×” × ×¨×©×."
     });
   }
 
@@ -948,11 +948,11 @@ export function App() {
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 22px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText("קבלת שינוי תורנות - לוח מפורסם", 770, 38);
+      ctx.fillText("×§×‘×œ×ª ×©×™× ×•×™ ×ª×•×¨× ×•×ª - ×œ×•×— ×ž×¤×•×¨×¡×", 770, 38);
 
       ctx.fillStyle = "#93c5fd";
       ctx.font = "14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("תיעוד רשמי של העברת תורנות במערכת השיבוץ", 770, 64);
+      ctx.fillText("×ª×™×¢×•×“ ×¨×©×ž×™ ×©×œ ×”×¢×‘×¨×ª ×ª×•×¨× ×•×ª ×‘×ž×¢×¨×›×ª ×”×©×™×‘×•×¥", 770, 64);
 
       // 3. Draw Metadata Block
       ctx.fillStyle = "#ffffff";
@@ -963,40 +963,40 @@ export function App() {
 
       ctx.fillStyle = "#334155";
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("מבצע השינוי:", 750, 125);
+      ctx.fillText("×ž×‘×¦×¢ ×”×©×™× ×•×™:", 750, 125);
       ctx.font = "14px system-ui, -apple-system, sans-serif";
       ctx.fillText(actorName, 630, 125);
 
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("זמן ביצוע:", 750, 155);
+      ctx.fillText("×–×ž×Ÿ ×‘×™×¦×•×¢:", 750, 155);
       ctx.font = "14px system-ui, -apple-system, sans-serif";
       const formattedTime = new Date().toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" });
       ctx.fillText(formattedTime, 630, 155);
 
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("מהות השינוי:", 750, 185);
+      ctx.fillText("×ž×”×•×ª ×”×©×™× ×•×™:", 750, 185);
       ctx.fillStyle = "#b91c1c";
       
       const roleName = workspaceData.roles.find(r => r.code === roleCode)?.name ?? roleCode;
       const [y, m, d] = date.split("-");
       const formattedDate = `${d}/${m}/${y}`;
-      ctx.fillText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`, 750, 185);
+      ctx.fillText(`×”×¢×‘×¨×ª ×ª×•×¨× ×•×ª (${roleName}) ×‘×ª××¨×™×š ${formattedDate}:`, 750, 185);
       
       ctx.fillStyle = "#1e293b";
       ctx.font = "14px system-ui, -apple-system, sans-serif";
-      const textWidth = ctx.measureText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`).width;
-      ctx.fillText(`ד"ר ${giverDoc.name} ➔ ד"ר ${receiverDoc.name}`, 750 - textWidth - 10, 185);
+      const textWidth = ctx.measureText(`×”×¢×‘×¨×ª ×ª×•×¨× ×•×ª (${roleName}) ×‘×ª××¨×™×š ${formattedDate}:`).width;
+      ctx.fillText(`×“"×¨ ${giverDoc.name} âž” ×“"×¨ ${receiverDoc.name}`, 750 - textWidth - 10, 185);
 
       ctx.fillStyle = "#334155";
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("סיבת העברה:", 750, 215);
+      ctx.fillText("×¡×™×‘×ª ×”×¢×‘×¨×”:", 750, 215);
       ctx.font = "italic 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText(reason || "לא צוינה סיבה", 630, 215);
+      ctx.fillText(reason || "×œ× ×¦×•×™× ×” ×¡×™×‘×”", 630, 215);
 
       // 4. Draw Context Table
       ctx.fillStyle = "#334155";
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("מצב השיבוץ באותו יום (לפני השינוי):", 770, 260);
+      ctx.fillText("×ž×¦×‘ ×”×©×™×‘×•×¥ ×‘××•×ª×• ×™×•× (×œ×¤× ×™ ×”×©×™× ×•×™):", 770, 260);
 
       const tableTop = 275;
       const tableLeft = 30;
@@ -1009,7 +1009,7 @@ export function App() {
       ctx.strokeStyle = "#cbd5e1";
       ctx.strokeRect(tableLeft, tableTop, tableWidth, tableHeight);
 
-      const columns = ["תאריך", ...workspaceData.roles.map(r => r.name)];
+      const columns = ["×ª××¨×™×š", ...workspaceData.roles.map(r => r.name)];
       const colCount = columns.length;
       const colWidth = tableWidth / colCount;
 
@@ -1038,8 +1038,8 @@ export function App() {
         const assignment = currentSchedule.assignments[cellKeyStr] ?? { doctorId: null, pending: false };
         
         const docName = assignment.doctorId 
-          ? (workspaceData.doctors.find(doc => doc.id === assignment.doctorId)?.name ?? "לא ידוע")
-          : (assignment.pending ? "ממתין" : "לא שובץ");
+          ? (workspaceData.doctors.find(doc => doc.id === assignment.doctorId)?.name ?? "×œ× ×™×“×•×¢")
+          : (assignment.pending ? "×ž×ž×ª×™×Ÿ" : "×œ× ×©×•×‘×¥");
         
         const x = tableLeft + (cellIdx + 0.5) * colWidth;
 
@@ -1077,7 +1077,7 @@ export function App() {
       ctx.fillStyle = "#94a3b8";
       ctx.font = "10px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText("מאובטח ע\"י Google Drive & Apps Script Backend", 35, 400);
+      ctx.fillText("×ž××•×‘×˜×— ×¢\"×™ Google Drive & Apps Script Backend", 35, 400);
 
       resolve(canvas.toDataURL("image/png"));
     });
@@ -1096,7 +1096,7 @@ export function App() {
 
     if (isDirect) {
       setBusy(true);
-      setMessage("מייצר קבלת שינוי ומעלה ל-Google Drive...");
+      setMessage("×ž×™×™×¦×¨ ×§×‘×œ×ª ×©×™× ×•×™ ×•×ž×¢×œ×” ×œ-Google Drive...");
       try {
         const imgDataUri = await generateSnapshotCard(
           data,
@@ -1150,7 +1150,7 @@ export function App() {
 
             return auditEntryInput;
           },
-          note: `השינוי בוצע בהצלחה ותועד ביומן הפעולות${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+          note: `×”×©×™× ×•×™ ×‘×•×¦×¢ ×‘×”×¦×œ×—×” ×•×ª×•×¢×“ ×‘×™×•×ž×Ÿ ×”×¤×¢×•×œ×•×ª${fileId ? " ×¢× ×ª×ž×•× ×ª ×’×™×‘×•×™ ×‘-Drive" : ""}.`
         });
 
         if (schedule.status === "published") {
@@ -1162,7 +1162,7 @@ export function App() {
         }
 
       } catch (err) {
-        setMessage("שגיאה בביצוע ההחלפה: " + (err instanceof Error ? err.message : String(err)));
+        setMessage("×©×’×™××” ×‘×‘×™×¦×•×¢ ×”×”×—×œ×¤×”: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setBusy(false);
         setSwapModalCell(null);
@@ -1193,7 +1193,7 @@ export function App() {
             after: request
           };
         },
-        note: "בקשת החלפה נשלחה לאישור הצ'יף."
+        note: "×‘×§×©×ª ×”×—×œ×¤×” × ×©×œ×—×” ×œ××™×©×•×¨ ×”×¦'×™×£."
       });
       setSwapModalCell(null);
       setSwapTargetDoctorId("");
@@ -1208,12 +1208,12 @@ export function App() {
     const giverDoctor = workspace.doctors.find(d => d.id === request.currentDoctorId || d.id === request.requesterDoctorId);
     const receiverDoctor = workspace.doctors.find(d => d.id === request.proposedDoctorId);
     if (!giverDoctor || !receiverDoctor) {
-      setMessage("לא נמצאו הרופאים המתאימים לבקשה זו.");
+      setMessage("×œ× × ×ž×¦××• ×”×¨×•×¤××™× ×”×ž×ª××™×ž×™× ×œ×‘×§×©×” ×–×•.");
       return;
     }
 
     setBusy(true);
-    setMessage("מייצר קבלת שינוי ומעלה ל-Google Drive...");
+    setMessage("×ž×™×™×¦×¨ ×§×‘×œ×ª ×©×™× ×•×™ ×•×ž×¢×œ×” ×œ-Google Drive...");
 
     try {
       const imgDataUri = await generateSnapshotCard(
@@ -1224,7 +1224,7 @@ export function App() {
         giverDoctor,
         receiverDoctor,
         request.reason,
-        appUser?.name || appUser?.email || "צ'יף מתמחים"
+        appUser?.name || appUser?.email || "×¦'×™×£ ×ž×ª×ž×—×™×"
       );
 
       let fileId = "";
@@ -1257,7 +1257,7 @@ export function App() {
           targetSchedule.validation.stale = true;
 
           targetRequest.status = "applied";
-          targetRequest.resolutionNote = resolutionNote || "אושר ע\"י צ'יף";
+          targetRequest.resolutionNote = resolutionNote || "××•×©×¨ ×¢\"×™ ×¦'×™×£";
           targetRequest.appliedAt = new Date().toISOString();
           targetRequest.appliedByUserId = appUser?.id ?? null;
           targetRequest.updatedAt = targetRequest.appliedAt;
@@ -1280,7 +1280,7 @@ export function App() {
 
           return auditEntryInput;
         },
-        note: `הבקשה אושרה והוחלה על השיבוץ${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+        note: `×”×‘×§×©×” ××•×©×¨×” ×•×”×•×—×œ×” ×¢×œ ×”×©×™×‘×•×¥${fileId ? " ×¢× ×ª×ž×•× ×ª ×’×™×‘×•×™ ×‘-Drive" : ""}.`
       });
 
       try {
@@ -1290,14 +1290,14 @@ export function App() {
       }
 
     } catch (err) {
-      setMessage("שגיאה באישור הבקשה: " + (err instanceof Error ? err.message : String(err)));
+      setMessage("×©×’×™××” ×‘××™×©×•×¨ ×”×‘×§×©×”: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(false);
     }
   }
 
   function handleRejectRequest(requestId: string) {
-    if (!canReviewRequests(role)) return setMessage("אין הרשאה לטפל בבקשות.");
+    if (!canReviewRequests(role)) return setMessage("××™×Ÿ ×”×¨×©××” ×œ×˜×¤×œ ×‘×‘×§×©×•×ª.");
     commitChange({
       mutator: (draft) => {
         const request = draft.changeRequests.find(r => r.id === requestId);
@@ -1306,7 +1306,7 @@ export function App() {
         request.status = "rejected";
         request.decidedAt = new Date().toISOString();
         request.decidedByUserId = appUser?.id ?? null;
-        request.resolutionNote = "נדחה";
+        request.resolutionNote = "× ×“×—×”";
         request.updatedAt = request.decidedAt;
         return {
           action: "published-swap-rejected",
@@ -1319,7 +1319,7 @@ export function App() {
           after: request
         };
       },
-      note: "הבקשה נדחתה."
+      note: "×”×‘×§×©×” × ×“×—×ª×”."
     });
   }
 
@@ -1341,18 +1341,18 @@ export function App() {
         <header className="topbar">
           <div>
             <h1>{workspace.workspace.name}</h1>
-            <p>חיבור למערכת סידור תורנויות מחלקתי</p>
+            <p>×—×™×‘×•×¨ ×œ×ž×¢×¨×›×ª ×¡×™×“×•×¨ ×ª×•×¨× ×•×™×•×ª ×ž×—×œ×§×ª×™</p>
           </div>
         </header>
         
         <section className="panel" style={{ maxWidth: "450px", margin: "40px auto", padding: "24px" }}>
-          <h2 style={{ marginBottom: "16px", textAlign: "center" }}>התחברות למערכת</h2>
+          <h2 style={{ marginBottom: "16px", textAlign: "center" }}>×”×ª×—×‘×¨×•×ª ×œ×ž×¢×¨×›×ª</h2>
           {message ? <div className="notice" style={{ marginBottom: "16px" }}>{message}</div> : null}
           
           <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="drive-grid" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {(showUrlInput || !loginUrl) && (
               <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                כתובת שרת Apps Script
+                ×›×ª×•×‘×ª ×©×¨×ª Apps Script
                 <input dir="ltr" value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." />
               </label>
             )}
@@ -1360,42 +1360,42 @@ export function App() {
             {!showBootstrap ? (
               <>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  שם משתמש
+                  ×©× ×ž×©×ª×ž×©
                   <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="Username" />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  סיסמה
+                  ×¡×™×¡×ž×”
                   <input type="password" dir="ltr" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Password" />
                 </label>
                 <button type="submit" className="primary" disabled={busy} style={{ alignSelf: "center", width: "100%", padding: "10px", marginTop: "8px" }}>
-                  {busy ? "מתחבר..." : "התחבר"}
+                  {busy ? "×ž×ª×—×‘×¨..." : "×”×ª×—×‘×¨"}
                 </button>
                 <div style={{ textAlign: "center", marginTop: "12px" }}>
                   <a href="#" onClick={(e) => { e.preventDefault(); setShowBootstrap(true); setMessage(""); }} style={{ fontSize: "12px", color: "var(--color-primary-blue, #2563eb)" }}>
-                    הקמה ראשונית של המערכת (התקנה חדשה)
+                    ×”×§×ž×” ×¨××©×•× ×™×ª ×©×œ ×”×ž×¢×¨×›×ª (×”×ª×§× ×” ×—×“×©×”)
                   </a>
                 </div>
               </>
             ) : (
               <>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  שם משתמש מבוקש למנהל
-                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="לדוגמה: admin" />
+                  ×©× ×ž×©×ª×ž×© ×ž×‘×•×§×© ×œ×ž× ×”×œ
+                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="×œ×“×•×’×ž×”: admin" />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  שם מלא של המנהל
-                  <input value={plannerName} onChange={(e) => setPlannerName(e.target.value)} placeholder="שם מלא" />
+                  ×©× ×ž×œ× ×©×œ ×”×ž× ×”×œ
+                  <input value={plannerName} onChange={(e) => setPlannerName(e.target.value)} placeholder="×©× ×ž×œ×" />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  סיסמה מבוקשת למנהל
-                  <input type="password" dir="ltr" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="סיסמה" />
+                  ×¡×™×¡×ž×” ×ž×‘×•×§×©×ª ×œ×ž× ×”×œ
+                  <input type="password" dir="ltr" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="×¡×™×¡×ž×”" />
                 </label>
                 <button type="button" onClick={handleBootstrap} className="primary" disabled={busy} style={{ alignSelf: "center", width: "100%", padding: "10px", marginTop: "8px" }}>
-                  {busy ? "מקים מערכת..." : "בצע הקמה ראשונית"}
+                  {busy ? "×ž×§×™× ×ž×¢×¨×›×ª..." : "×‘×¦×¢ ×”×§×ž×” ×¨××©×•× ×™×ª"}
                 </button>
                 <div style={{ textAlign: "center", marginTop: "12px" }}>
                   <a href="#" onClick={(e) => { e.preventDefault(); setShowBootstrap(false); setMessage(""); }} style={{ fontSize: "12px", color: "var(--color-primary-blue, #2563eb)" }}>
-                    חזור למסך התחברות רגיל
+                    ×—×–×•×¨ ×œ×ž×¡×š ×”×ª×—×‘×¨×•×ª ×¨×’×™×œ
                   </a>
                 </div>
               </>
@@ -1403,7 +1403,7 @@ export function App() {
             
             <div style={{ textAlign: "center", marginTop: "12px", borderTop: "1px solid var(--line, #d8dfeb)", paddingTop: "12px" }}>
               <a href="#" onClick={(e) => { e.preventDefault(); setShowUrlInput(!showUrlInput); }} style={{ fontSize: "12px", color: "var(--muted, #64748b)" }}>
-                {showUrlInput ? "הסתר הגדרות שרת" : "הגדרות שרת (מתקדם)"}
+                {showUrlInput ? "×”×¡×ª×¨ ×”×’×“×¨×•×ª ×©×¨×ª" : "×”×’×“×¨×•×ª ×©×¨×ª (×ž×ª×§×“×)"}
               </a>
             </div>
           </form>
@@ -1417,25 +1417,25 @@ export function App() {
       <header className="topbar">
         <div>
           <h1>{workspace.workspace.name}</h1>
-          <p>סידור תורנויות מחלקתי · RTL Roster Portal</p>
+          <p>×¡×™×“×•×¨ ×ª×•×¨× ×•×™×•×ª ×ž×—×œ×§×ª×™ Â· RTL Roster Portal</p>
         </div>
         <div className="month-controls">
           <input type="number" value={month} min={1} max={12} onChange={(event) => setMonth(Number(event.target.value))} />
           <input type="number" value={year} min={2020} max={2100} onChange={(event) => setYear(Number(event.target.value))} />
-          <span className={`status ${schedule.status}`}>{schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
+          <span className={`status ${schedule.status}`}>{schedule.status === "published" ? "×¤×•×¨×¡×" : "×˜×™×•×˜×”"}</span>
         </div>
       </header>
 
       <section className="login-strip">
         <div>
-          <strong>מחובר כ-{currentUser.name}</strong>
-          <span>שם משתמש: {currentUser.username}</span>
+          <strong>×ž×—×•×‘×¨ ×›-{currentUser.name}</strong>
+          <span>×©× ×ž×©×ª×ž×©: {currentUser.username}</span>
         </div>
         {role ? <b>{roleLabels[role]}</b> : null}
-        <button className="danger" onClick={handleLogout}><Mail size={17} />התנתק</button>
+        <button className="danger" onClick={handleLogout}><Mail size={17} />×”×ª× ×ª×§</button>
       </section>
 
-      {session.status === "blocked" ? <BlockedUser email={currentUser.username} recover={() => setMessage("פנה למנהל המערכת כדי לקבל הרשאות מתאימות.")} /> : null}
+      {session.status === "blocked" ? <BlockedUser email={currentUser.username} recover={() => setMessage("×¤× ×” ×œ×ž× ×”×œ ×”×ž×¢×¨×›×ª ×›×“×™ ×œ×§×‘×œ ×”×¨×©××•×ª ×ž×ª××™×ž×•×ª.")} /> : null}
       {message ? <div className="notice">{message}</div> : null}
 
       {role ? (
@@ -1462,14 +1462,16 @@ export function App() {
                 role={role}
                 appUser={appUser}
                 changeRequests={workspace.changeRequests}
-                onSwapCellClick={(date, roleCode, giverDoctorId) => {
-                  setSwapModalCell({ date, roleCode, giverDoctorId });
+                onSwapCellClick={(date, roleCode, giverDoctorId, targetDoctorId) => {
+                  setSwapModalCell({ date, roleCode, giverDoctorId, targetDoctorId });
+                  if (targetDoctorId) setSwapTargetDoctorId(targetDoctorId);
+                  else setSwapTargetDoctorId("");
                 }}
                 onApproveRequest={handleApproveRequest}
                 onRejectRequest={handleRejectRequest}
               />
             ) : (
-              <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
+              <LockedPanel title="×”×©×™×‘×•×¥ ×¢×“×™×™×Ÿ ×˜×™×•×˜×”" text="×ž×ª×ž×—×™× ×•×‘×›×™×¨×™× ×¨×’×™×œ×™× ×™×¨××• ××ª ×”×—×•×“×© ×¨×§ ××—×¨×™ ×¤×¨×¡×•×." />
             )
           )}
 
@@ -1492,7 +1494,7 @@ export function App() {
                 autoSchedule={autoGenerateRoster}
               />
             ) : (
-              <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
+              <LockedPanel title="×”×©×™×‘×•×¥ ×¢×“×™×™×Ÿ ×˜×™×•×˜×”" text="×ž×ª×ž×—×™× ×•×‘×›×™×¨×™× ×¨×’×™×œ×™× ×™×¨××• ××ª ×”×—×•×“×© ×¨×§ ××—×¨×™ ×¤×¨×¡×•×." />
             )
           )}
           {tab === "exclusions" && (
@@ -1578,9 +1580,9 @@ export function App() {
                 try {
                   const parsed = migrateWorkspace(JSON.parse(importText));
                   setAndPersist(parsed);
-                  setMessage("קובץ JSON נטען.");
+                  setMessage("×§×•×‘×¥ JSON × ×˜×¢×Ÿ.");
                 } catch {
-                  setMessage("JSON לא תקין.");
+                  setMessage("JSON ×œ× ×ª×§×™×Ÿ.");
                 }
               }}
               exportJson={() => downloadJson(workspace)}
@@ -1594,73 +1596,94 @@ export function App() {
               background: "rgba(0, 0, 0, 0.4)", display: "flex",
               alignItems: "center", justifyContent: "center", zIndex: 1000
             }}>
-              <div className="panel" style={{ width: "450px", padding: "24px", direction: "rtl" }}>
-                <h3 style={{ marginTop: 0 }}>העברת / החלפת תורנות</h3>
-                <p style={{ fontSize: "14px", color: "var(--muted)", marginBottom: "16px" }}>
-                  העברת התורנות של <strong>{workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId)?.name}</strong> בתפקיד <strong>{workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name}</strong> בתאריך <strong>{swapModalCell.date.split("-").reverse().join("/")}</strong>.
-                </p>
-                
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px", fontWeight: "bold" }}>
-                  בחר רופא מחליף
-                  <select 
-                    value={swapTargetDoctorId} 
-                    onChange={(e) => setSwapTargetDoctorId(e.target.value)}
-                    style={{ width: "100%" }}
-                  >
-                    <option value="">-- בחר רופא --</option>
-                    {(() => {
-                      const giverDoctor = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
-                      const roleObj = workspace.roles.find(r => r.code === swapModalCell.roleCode);
-                      if (!giverDoctor || !roleObj) return null;
-                      
-                      const options = workspace.doctors.filter(d => 
-                        d.active && 
-                        d.id !== swapModalCell.giverDoctorId && 
-                        d.group === giverDoctor.group && 
-                        isDoctorEligibleForRole(d, roleObj)
-                      );
-                      const availableOptions = options.filter(d => !isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
-                      const blockedOptions = options.filter(d => isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
-                      
-                      return (
-                        <>
-                          {availableOptions.map(d => (
-                            <option key={d.id} value={d.id}>{formatDoctorOption(d)}</option>
-                          ))}
-                          {blockedOptions.length > 0 && <option disabled>━━ אילוצים ━━</option>}
-                          {blockedOptions.map(d => (
-                            <option key={d.id} value={d.id}>{formatDoctorOption(d)} (אילוץ)</option>
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </select>
-                </label>
+              <div className="panel" style={{ width: "480px", padding: "24px", direction: "rtl" }}>
+                <h3 style={{ marginTop: 0 }}>×”×¢×‘×¨×ª / ×”×—×œ×¤×ª ×ª×•×¨× ×•×ª</h3>
+                {(() => {
+                  const giverDoc = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
+                  const roleName = workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name ?? "";
+                  const dateStr = swapModalCell.date.split("-").reverse().join("/");
+                  const targetDoc = swapTargetDoctorId ? workspace.doctors.find(d => d.id === swapTargetDoctorId) : null;
+                  const isDirect = role === "senior-planner" || (role === "senior" && giverDoc?.group === "senior");
+                  return (
+                    <>
+                      <div style={{ background: "#f8fafc", border: "1px solid var(--line)", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", fontSize: "14px" }}>
+                        <div style={{ marginBottom: "6px" }}>
+                          <span style={{ color: "var(--muted)" }}>×ª×¤×§×™×“: </span><strong>{roleName}</strong>
+                          <span style={{ color: "var(--muted)", marginRight: "12px" }}>×ª××¨×™×š: </span><strong>{dateStr}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: "var(--muted)" }}>×ž×¢×‘×™×¨: </span>
+                          <strong style={{ color: "#b91c1c" }}>×“"×¨ {giverDoc?.name ?? "?"}</strong>
+                          {targetDoc && (
+                            <>
+                              <span style={{ margin: "0 8px", color: "var(--muted)" }}>â†’ ×ž×—×œ×™×£:</span>
+                              <strong style={{ color: "#16a34a" }}>×“"×¨ {targetDoc.name}</strong>
+                            </>
+                          )}
+                        </div>
+                        <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--muted)" }}>
+                          {isDirect ? "âœ“ ×©×™× ×•×™ ×™×©×™×¨ â€” ×™×•×—×œ ×ž×™×“ ×•×™×ª×•×¢×“ ×‘×™×•×ž×Ÿ" : "â³ ×‘×§×©×” â€” ×ª×™×©×œ×— ×œ××™×©×•×¨ ×”×¦×³×™×£"}
+                        </div>
+                      </div>
 
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px", fontWeight: "bold" }}>
-                  סיבה לשינוי
-                  <input 
-                    value={swapReason} 
-                    onChange={(e) => setSwapReason(e.target.value)} 
-                    placeholder="הקלד סיבה להעברה..." 
-                    style={{ width: "100%" }}
-                  />
-                </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px", fontWeight: "bold" }}>
+                        {swapTargetDoctorId ? "×¨×•×¤× ×ž×—×œ×™×£ (× ×™×ª×Ÿ ×œ×©×™× ×•×™)" : "×‘×—×¨ ×¨×•×¤× ×ž×—×œ×™×£"}
+                        <select
+                          value={swapTargetDoctorId}
+                          onChange={(e) => setSwapTargetDoctorId(e.target.value)}
+                          style={{ width: "100%" }}
+                        >
+                          <option value="">-- ×‘×—×¨ ×¨×•×¤× --</option>
+                          {(() => {
+                            const giverDoctor = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
+                            const roleObj = workspace.roles.find(r => r.code === swapModalCell.roleCode);
+                            if (!giverDoctor || !roleObj) return null;
+                            const options = workspace.doctors.filter(d =>
+                              d.active &&
+                              d.id !== swapModalCell.giverDoctorId &&
+                              d.group === giverDoctor.group &&
+                              isDoctorEligibleForRole(d, roleObj)
+                            );
+                            const availableOptions = options.filter(d => !isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
+                            const blockedOptions = options.filter(d => isDoctorBlockedForAssignment(schedule, d.id, swapModalCell.date, swapModalCell.roleCode));
+                            return (
+                              <>
+                                {availableOptions.map(d => (
+                                  <option key={d.id} value={d.id}>{formatDoctorOption(d)}</option>
+                                ))}
+                                {blockedOptions.length > 0 && <option disabled>â”â” ××™×œ×•×¦×™× â”â”</option>}
+                                {blockedOptions.map(d => (
+                                  <option key={d.id} value={d.id}>{formatDoctorOption(d)} (××™×œ×•×¥)</option>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </select>
+                      </label>
 
-                <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                  <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
-                  <button 
-                    className="primary" 
-                    disabled={!swapTargetDoctorId} 
-                    onClick={handleExecuteSwap}
-                  >
-                    {(() => {
-                      const giverDoctor = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
-                      const isDirect = role === "senior-planner" || (role === "senior" && giverDoctor?.group === "senior");
-                      return isDirect ? "בצע החלפה מיידית" : "שלח בקשה לאישור";
-                    })()}
-                  </button>
-                </div>
+                      <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px", fontWeight: "bold" }}>
+                        u05e1u05d9u05d1u05d4 u05dcu05e9u05d9u05e0u05d5u05d9
+                        <input
+                          value={swapReason}
+                          onChange={(e) => setSwapReason(e.target.value)}
+                          placeholder="u05d4u05e7u05dcu05d3 u05e1u05d9u05d1u05d4 u05dcu05d4u05e2u05d1u05e8u05d4..."
+                          style={{ width: "100%" }}
+                        />
+                      </label>
+
+                      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                        <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>u05d1u05d9u05d8u05d5u05dc</button>
+                        <button
+                          className="primary"
+                          disabled={!swapTargetDoctorId}
+                          onClick={handleExecuteSwap}
+                        >
+                          {isDirect ? "u05d1u05e6u05e2 u05d4u05d7u05dcu05e4u05d4 u05deu05d9u05d9u05d3u05d9u05ea" : "u05e9u05dcu05d7 u05d1u05e7u05e9u05d4 u05dcu05d0u05d9u05e9u05d5u05e8"}
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -1683,8 +1706,8 @@ function canSeeTab(item: (typeof tabs)[number], role: AppRole | null) {
 function BlockedUser({ email, recover }: { email: string; recover: () => void }) {
   return (
     <section className="panel">
-      <h2>אין הרשאה במערכת</h2>
-      <p>החשבון {email} לא רשום או אינו פעיל. אנא פנה למנהל המערכת (מתכנן בכיר) על מנת להסדיר את הרשאות הגישה שלך.</p>
+      <h2>××™×Ÿ ×”×¨×©××” ×‘×ž×¢×¨×›×ª</h2>
+      <p>×”×—×©×‘×•×Ÿ {email} ×œ× ×¨×©×•× ××• ××™× ×• ×¤×¢×™×œ. ×× × ×¤× ×” ×œ×ž× ×”×œ ×”×ž×¢×¨×›×ª (×ž×ª×›× ×Ÿ ×‘×›×™×¨) ×¢×œ ×ž× ×ª ×œ×”×¡×“×™×¨ ××ª ×”×¨×©××•×ª ×”×’×™×©×” ×©×œ×š.</p>
     </section>
   );
 }
@@ -1706,7 +1729,7 @@ function isDoctorBlockedForAssignment(schedule: MonthSchedule, doctorId: string,
 }
 
 function formatDoctorOption(doctor: Doctor) {
-  return `${doctor.group === "resident" ? "מתמחה · " : "בכיר · "}${doctor.name}${doctor.canAngio ? " · אנגיו" : ""}`;
+  return `${doctor.group === "resident" ? "×ž×ª×ž×—×” Â· " : "×‘×›×™×¨ Â· "}${doctor.name}${doctor.canAngio ? " Â· ×× ×’×™×•" : ""}`;
 }
 
 function Roster({
@@ -1745,41 +1768,41 @@ function Roster({
     <section className="panel">
       <div className="toolbar roster-toolbar">
         <div>
-          <h2>שיבוץ חודשי</h2>
-          <span>{editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
+          <h2>×©×™×‘×•×¥ ×—×•×“×©×™</h2>
+          <span>{editable ? "×ž×¦×‘ ×¢×¨×™×›×”" : "×§×¨×™××” ×‘×œ×‘×“"} Â· {schedule.status === "published" ? "×¤×•×¨×¡×" : "×˜×™×•×˜×”"}</span>
         </div>
         <div className="actions">
           {editable && (
             <button onClick={autoSchedule} style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af" }}>
-              שיבוץ אוטומטי
+              ×©×™×‘×•×¥ ××•×˜×•×ž×˜×™
             </button>
           )}
-          <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>בדוק</button>
-          <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>פרסם</button>
-          <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>החזר לטיוטה</button>
+          <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>×‘×“×•×§</button>
+          <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>×¤×¨×¡×</button>
+          <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>×”×—×–×¨ ×œ×˜×™×•×˜×”</button>
         </div>
       </div>
       <div className="roster-summary">
-        <InfoCell label="שיבוצים" value={String(counts.assigned)} />
-        <InfoCell label="שגיאות" value={String(counts.errors)} tone={counts.errors ? "bad" : "good"} />
-        <InfoCell label="אזהרות" value={String(counts.warnings)} tone={counts.warnings ? "warn" : "good"} />
-        <InfoCell label="בדיקה" value={schedule.validation.stale ? "צריך בדיקה" : "נבדק"} tone={schedule.validation.stale ? "warn" : "good"} />
-        <InfoCell label="סנכרון יומן" value={schedule.lastSyncedAt ? new Date(schedule.lastSyncedAt).toLocaleString("he-IL") : "טרם סונכרן"} />
+        <InfoCell label="×©×™×‘×•×¦×™×" value={String(counts.assigned)} />
+        <InfoCell label="×©×’×™××•×ª" value={String(counts.errors)} tone={counts.errors ? "bad" : "good"} />
+        <InfoCell label="××–×”×¨×•×ª" value={String(counts.warnings)} tone={counts.warnings ? "warn" : "good"} />
+        <InfoCell label="×‘×“×™×§×”" value={schedule.validation.stale ? "×¦×¨×™×š ×‘×“×™×§×”" : "× ×‘×“×§"} tone={schedule.validation.stale ? "warn" : "good"} />
+        <InfoCell label="×¡× ×›×¨×•×Ÿ ×™×•×ž×Ÿ" value={schedule.lastSyncedAt ? new Date(schedule.lastSyncedAt).toLocaleString("he-IL") : "×˜×¨× ×¡×•× ×›×¨×Ÿ"} />
       </div>
       {schedule.validation.issues.length ? (
         <div className="issue-strip">
           {schedule.validation.issues.slice(0, 6).map((issue) => (
             <button key={issue.id} className={`issue-pill ${issue.severity}`} onClick={() => issue.cellKey && setFocusCell(issue.cellKey)}>
-              <span>{issue.severity === "error" ? "שגיאה" : "אזהרה"}</span>
+              <span>{issue.severity === "error" ? "×©×’×™××”" : "××–×”×¨×”"}</span>
               {issue.message}
             </button>
           ))}
-          {schedule.validation.issues.length > 6 ? <span className="hint">+{schedule.validation.issues.length - 6} נוספות</span> : null}
+          {schedule.validation.issues.length > 6 ? <span className="hint">+{schedule.validation.issues.length - 6} × ×•×¡×¤×•×ª</span> : null}
         </div>
       ) : null}
       <div className="board-wrap">
         <table className="roster-table">
-          <thead><tr><th className="sticky-date">תאריך</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
+          <thead><tr><th className="sticky-date">×ª××¨×™×š</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
           <tbody>
             {days.map((day) => (
               <tr key={day.key}>
@@ -1794,12 +1817,12 @@ function Roster({
                   const blockedOptions = options.filter((doctor) => isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
                   return (
                     <td key={role.code} id={`cell-${key}`} className={`${disabled ? "disabled" : ""} ${issue ?? ""} ${focusCell === key ? "focused" : ""}`}>
-                      {disabled ? <span className="blocked-cell">לא פעיל</span> : (
+                      {disabled ? <span className="blocked-cell">×œ× ×¤×¢×™×œ</span> : (
                         <select disabled={!editable} value={assignment.pending ? "__pending" : assignment.doctorId ?? ""} onChange={(event) => updateAssignment(day.key, role.code, event.target.value)}>
-                          <option value="">לא שובץ</option>
-                          <option value="__pending">ממתין</option>
+                          <option value="">×œ× ×©×•×‘×¥</option>
+                          <option value="__pending">×ž×ž×ª×™×Ÿ</option>
                           {availableOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
-                          {blockedOptions.length ? <option disabled>━━ אילוצים ━━</option> : null}
+                          {blockedOptions.length ? <option disabled>â”â” ××™×œ×•×¦×™× â”â”</option> : null}
                           {blockedOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
                         </select>
                       )}
@@ -1853,26 +1876,26 @@ function Exclusions({
 
   return (
     <section className="panel exclusions-panel">
-      <div className="toolbar"><h2>אילוצים</h2><button className="primary" onClick={addExclusions}><Plus size={17} />הוסף חסימה</button></div>
+      <div className="toolbar"><h2>××™×œ×•×¦×™×</h2><button className="primary" onClick={addExclusions}><Plus size={17} />×”×•×¡×£ ×—×¡×™×ž×”</button></div>
       <div className="form-row">
         {canChooseDoctor ? (
           <select value={form.doctorId} onChange={(event) => setForm({ ...form, doctorId: event.target.value })}>
-            <option value="">בחר רופא</option>
+            <option value="">×‘×—×¨ ×¨×•×¤×</option>
             {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
           </select>
-        ) : <span className="readonly-chip">{doctors.find((doctor) => doctor.id === form.doctorId)?.name ?? "המשתמש לא מקושר לרופא"}</span>}
+        ) : <span className="readonly-chip">{doctors.find((doctor) => doctor.id === form.doctorId)?.name ?? "×”×ž×©×ª×ž×© ×œ× ×ž×§×•×©×¨ ×œ×¨×•×¤×"}</span>}
         <div className="role-blockers">
           {roleCodes.map((roleCode, index) => (
             <div className="role-blocker" key={`${roleCode}-${index}`}>
               <select value={roleCode} onChange={(event) => setRoleCodes(roleCodes.map((item, itemIndex) => itemIndex === index ? event.target.value as RoleCode : item))}>
                 {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
               </select>
-              {roleCodes.length > 1 ? <button aria-label="הסר תפקיד" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
+              {roleCodes.length > 1 ? <button aria-label="×”×¡×¨ ×ª×¤×§×™×“" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
             </div>
           ))}
-          <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />הוסף תפקיד</button>
+          <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />×”×•×¡×£ ×ª×¤×§×™×“</button>
         </div>
-        <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / הערה" />
+        <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="×¡×™×‘×” / ×”×¢×¨×”" />
       </div>
       <div className="month-picker">
         {days.map((day) => {
@@ -1881,20 +1904,20 @@ function Exclusions({
         })}
       </div>
       <div className="exclusion-review">
-        <div className="toolbar compact"><h2>אילוצים שנוספו</h2><span>{sortedExclusions.length} רשומות</span></div>
+        <div className="toolbar compact"><h2>××™×œ×•×¦×™× ×©× ×•×¡×¤×•</h2><span>{sortedExclusions.length} ×¨×©×•×ž×•×ª</span></div>
         <div className="exclusion-card-list">
-          {sortedExclusions.length === 0 ? <div className="list-row">אין עדיין אילוצים בחודש הזה.</div> : null}
+          {sortedExclusions.length === 0 ? <div className="list-row">××™×Ÿ ×¢×“×™×™×Ÿ ××™×œ×•×¦×™× ×‘×—×•×“×© ×”×–×”.</div> : null}
           {sortedExclusions.map((exclusion) => {
           const doctor = doctors.find((candidate) => candidate.id === exclusion.doctorId);
           const role = roles.find((candidate) => candidate.code === exclusion.roleCode);
           return (
             <article className="exclusion-card" key={exclusion.id}>
               <div>
-                <b>{doctor?.name ?? "רופא לא ידוע"}</b>
-                <span>{exclusion.date} · {role?.name ?? "כל התפקידים"}</span>
+                <b>{doctor?.name ?? "×¨×•×¤× ×œ× ×™×“×•×¢"}</b>
+                <span>{exclusion.date} Â· {role?.name ?? "×›×œ ×”×ª×¤×§×™×“×™×"}</span>
                 {exclusion.reason ? <small>{exclusion.reason}</small> : null}
               </div>
-              <button className="danger" onClick={() => deleteExclusion(exclusion.id)}><Trash2 size={16} />מחק</button>
+              <button className="danger" onClick={() => deleteExclusion(exclusion.id)}><Trash2 size={16} />×ž×—×§</button>
             </article>
           );
         })}
@@ -1937,19 +1960,19 @@ function RequestsPanel({
   return (
     <section className="panel two">
       <div>
-        <div className="toolbar"><h2>שינוי תורנות</h2><button className="primary" onClick={submitRequest}><Plus size={17} />שלח בקשה</button></div>
+        <div className="toolbar"><h2>×©×™× ×•×™ ×ª×•×¨× ×•×ª</h2><button className="primary" onClick={submitRequest}><Plus size={17} />×©×œ×— ×‘×§×©×”</button></div>
         <div className="form-row">
           <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
           <select value={form.roleCode} onChange={(event) => setForm({ ...form, roleCode: event.target.value as RoleCode })}>
             {roles.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}
           </select>
           <select value={form.proposedDoctorId} onChange={(event) => setForm({ ...form, proposedDoctorId: event.target.value })}>
-            <option value="">ללא מחליף מוצע</option>
+            <option value="">×œ×œ× ×ž×—×œ×™×£ ×ž×•×¦×¢</option>
             {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
           </select>
-          <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / פרטים" />
+          <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="×¡×™×‘×” / ×¤×¨×˜×™×" />
         </div>
-        <p className="hint">בקשות בכירים נרשמות כמאושרות-בכיר, אבל עדיין מוחלות על השיבוץ דרך פעולה מתועדת.</p>
+        <p className="hint">×‘×§×©×•×ª ×‘×›×™×¨×™× × ×¨×©×ž×•×ª ×›×ž××•×©×¨×•×ª-×‘×›×™×¨, ××‘×œ ×¢×“×™×™×Ÿ ×ž×•×—×œ×•×ª ×¢×œ ×”×©×™×‘×•×¥ ×“×¨×š ×¤×¢×•×œ×” ×ž×ª×•×¢×“×ª.</p>
       </div>
       <div className="list">
         {visibleRequests.map((request) => {
@@ -1959,13 +1982,13 @@ function RequestsPanel({
           return (
             <div className="list-row tall" key={request.id}>
               <span>
-                <b>{requestStatusLabel(request.status)}</b> · {request.date} · {role?.name} · {requester?.name ?? "לא ידוע"}
-                <small>{proposed ? `מחליף מוצע: ${proposed.name}` : "ללא מחליף מוצע"} · {request.reason || "אין הערה"}</small>
+                <b>{requestStatusLabel(request.status)}</b> Â· {request.date} Â· {role?.name} Â· {requester?.name ?? "×œ× ×™×“×•×¢"}
+                <small>{proposed ? `×ž×—×œ×™×£ ×ž×•×¦×¢: ${proposed.name}` : "×œ×œ× ×ž×—×œ×™×£ ×ž×•×¦×¢"} Â· {request.reason || "××™×Ÿ ×”×¢×¨×”"}</small>
               </span>
               <div className="row-actions">
-                {canReview && request.status === "submitted" ? <button onClick={() => approve(request.id)}>אשר</button> : null}
-                {canReview && request.status === "submitted" ? <button onClick={() => reject(request.id)}>דחה</button> : null}
-                {canApply(request) && (request.status === "approved" || request.status === "senior-confirmed") && schedule.status === "published" ? <button className="primary" onClick={() => applyRequest(request.id)}>החל</button> : null}
+                {canReview && request.status === "submitted" ? <button onClick={() => approve(request.id)}>××©×¨</button> : null}
+                {canReview && request.status === "submitted" ? <button onClick={() => reject(request.id)}>×“×—×”</button> : null}
+                {canApply(request) && (request.status === "approved" || request.status === "senior-confirmed") && schedule.status === "published" ? <button className="primary" onClick={() => applyRequest(request.id)}>×”×—×œ</button> : null}
               </div>
             </div>
           );
@@ -1977,11 +2000,11 @@ function RequestsPanel({
 
 function requestStatusLabel(status: ChangeRequest["status"]) {
   const labels: Record<ChangeRequest["status"], string> = {
-    submitted: "נשלח",
-    "senior-confirmed": "אישור בכיר",
-    approved: "אושר",
-    rejected: "נדחה",
-    applied: "הוחל"
+    submitted: "× ×©×œ×—",
+    "senior-confirmed": "××™×©×•×¨ ×‘×›×™×¨",
+    approved: "××•×©×¨",
+    rejected: "× ×“×—×”",
+    applied: "×”×•×—×œ"
   };
   return labels[status];
 }
@@ -2005,42 +2028,54 @@ function PublishedRoster({
   role: AppRole;
   appUser: AppUser | null;
   changeRequests: ChangeRequest[];
-  onSwapCellClick: (date: string, roleCode: RoleCode, giverDoctorId: string) => void;
+  onSwapCellClick: (date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string) => void;
   onApproveRequest: (id: string, reason: string) => Promise<void>;
   onRejectRequest: (id: string) => void;
 }) {
   const [swapMode, setSwapMode] = useState(false);
   const [approveNotes, setApproveNotes] = useState<Record<string, string>>({});
-  
+  const [dragSource, setDragSource] = useState<{ date: string; roleCode: RoleCode; doctorId: string } | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
   const pendingRequests = useMemo(() => {
     return changeRequests.filter(r => r.scheduleKey === schedule.key && r.status === "submitted");
   }, [changeRequests, schedule.key]);
 
-  function canClickCell(assignment: Assignment, roleCode: RoleCode) {
-    if (!swapMode || schedule.status === "draft") return false;
+  // A cell can be dragged FROM if it has a doctor the current user is allowed to move
+  function canDragCell(assignment: Assignment): boolean {
+    if (schedule.status !== "published") return false;
     if (!assignment.doctorId) return false;
     const assignedDoc = doctors.find(d => d.id === assignment.doctorId);
     if (!assignedDoc) return false;
-
     if (role === "senior-planner") return true;
-
-    if (role === "senior") {
-      return assignedDoc.group === "senior";
-    }
-
-    if (role === "resident" || role === "chief-resident") {
-      return assignedDoc.group === "resident";
-    }
-
+    if (role === "senior") return assignedDoc.group === "senior";
+    if (role === "resident" || role === "chief-resident") return assignedDoc.group === "resident";
     return false;
+  }
+
+  // A cell can be dropped INTO if the dragged doctor is eligible for the target role
+  function canDropOnCell(targetDate: string, targetRoleCode: RoleCode): boolean {
+    if (!dragSource) return false;
+    const sourceDoc = doctors.find(d => d.id === dragSource.doctorId);
+    const targetRole = roles.find(r => r.code === targetRoleCode);
+    if (!sourceDoc || !targetRole) return false;
+    // Can't drop on the same cell
+    if (targetDate === dragSource.date && targetRoleCode === dragSource.roleCode) return false;
+    return isDoctorEligibleForRole(sourceDoc, targetRole);
+  }
+
+  // A cell is also clickable when swapMode is active
+  function canClickCell(assignment: Assignment): boolean {
+    if (!swapMode || schedule.status !== "published") return false;
+    return canDragCell(assignment);
   }
 
   return (
     <section className="panel">
       <div className="toolbar roster-toolbar">
         <div>
-          <h2>לוח תורנויות מפורסם</h2>
-          <span>{schedule.status === "published" ? "מצב צפייה פעיל" : "טיוטה (קריאה בלבד)"}</span>
+          <h2>×œ×•×— ×ª×•×¨× ×•×™×•×ª ×ž×¤×•×¨×¡×</h2>
+          <span>{schedule.status === "published" ? "×ž×¦×‘ ×¦×¤×™×™×” ×¤×¢×™×œ" : "×˜×™×•×˜×” (×§×¨×™××” ×‘×œ×‘×“)"}</span>
         </div>
         <div className="actions">
           {schedule.status === "published" && (
@@ -2050,17 +2085,17 @@ function PublishedRoster({
               style={swapMode ? { background: "#dc2626", borderColor: "#dc2626", color: "#fff" } : undefined}
             >
               <UserCheck size={17} />
-              {swapMode ? "בטל מצב החלפה" : "החלפה / שינוי תורנות"}
+              {swapMode ? "×‘×˜×œ ×ž×¦×‘ ×”×—×œ×¤×”" : "×”×—×œ×¤×” / ×©×™× ×•×™ ×ª×•×¨× ×•×ª"}
             </button>
           )}
         </div>
       </div>
 
-      {swapMode && (
+      {schedule.status === "published" && (
         <div className="notice" style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af", marginBottom: "12px", fontSize: "14px" }}>
-          <strong>מצב החלפות פעיל!</strong> לחץ על תורנות מאוישת בטבלה כדי לבצע שינוי או לשלוח בקשת החלפה.
+          <strong>×’×¨×•×¨ ×©× ×¨×•×¤×</strong> ×œ×ª× ××—×¨ ×›×“×™ ×œ×”×¦×™×¢/×œ×‘×¦×¢ ×”×¢×‘×¨×ª ×ª×•×¨× ×•×ª â€” ××• ×œ×—×¥ ×¢×œ <strong>×ž×¦×‘ ×”×—×œ×¤×”</strong> ×•×œ×—×¥ ×¢×œ ×ª× ×œ×‘×—×™×¨×” ×™×“× ×™×ª.
           <br />
-          <small>* בכירים יכולים לשנות בכירים בלבד (מיידי). מתמחים יכולים להציע החלפה עם מתמחים בלבד (באישור צ'יף).</small>
+          <small>* ×‘×›×™×¨×™× ×™×›×•×œ×™× ×œ×©× ×•×ª/×’×¨×•×¨ ×‘×›×™×¨×™× ×‘×œ×‘×“. ×ž×ª×ž×—×™× ×©×•×œ×—×™× ×‘×§×©×” (×œ××™×©×•×¨ ×¦×³×™×£). ×ž×ª×›× ×Ÿ ×‘×›×™×¨ â€” ×’×™×©×” ×ž×œ××”.</small>
         </div>
       )}
 
@@ -2068,7 +2103,7 @@ function PublishedRoster({
         <table className="roster-table">
           <thead>
             <tr>
-              <th className="sticky-date">תאריך</th>
+              <th className="sticky-date">×ª××¨×™×š</th>
               {roles.map((roleItem) => (
                 <th key={roleItem.code}>
                   <span className="role-title">
@@ -2091,36 +2126,89 @@ function PublishedRoster({
                   const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
                   const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
                   const assignedDoc = assignment.doctorId ? doctors.find(d => d.id === assignment.doctorId) : null;
-                  
-                  const clickable = canClickCell(assignment, roleItem.code);
+
+                  const draggable = !disabled && canDragCell(assignment);
+                  const droppable = !disabled && canDropOnCell(day.key, roleItem.code);
+                  const isOver = dragOverKey === key;
+                  const clickable = !disabled && canClickCell(assignment);
+
+                  // Compute cell visual style
+                  let cellStyle: React.CSSProperties = {};
+                  if (isOver && droppable) {
+                    cellStyle = { background: "#dcfce7", border: "2px dashed #16a34a", transition: "background 0.15s" };
+                  } else if (isOver && dragSource && !droppable) {
+                    cellStyle = { background: "#fee2e2", border: "2px dashed #dc2626", transition: "background 0.15s" };
+                  } else if (draggable) {
+                    cellStyle = { cursor: "grab" };
+                  } else if (clickable) {
+                    cellStyle = { cursor: "pointer", background: "#f0f9ff", border: "1.5px dashed #0284c7" };
+                  }
 
                   return (
-                    <td 
-                      key={roleItem.code} 
-                      className={`${disabled ? "disabled" : ""} ${clickable ? "clickable-swap-cell" : ""}`}
+                    <td
+                      key={roleItem.code}
+                      className={`${disabled ? "disabled" : ""}`}
+                      style={cellStyle}
+                      // â”€â”€ Click to swap (only when swapMode active) â”€â”€
                       onClick={() => {
                         if (clickable && assignment.doctorId) {
                           onSwapCellClick(day.key, roleItem.code, assignment.doctorId);
                         }
                       }}
-                      style={clickable ? {
-                        cursor: "pointer",
-                        background: "#f0f9ff",
-                        border: "1.5px dashed #0284c7",
-                        transition: "background 0.2s"
-                      } : undefined}
+                      // â”€â”€ Drag source â”€â”€
+                      draggable={draggable}
+                      onDragStart={(e) => {
+                        if (!draggable || !assignment.doctorId) return;
+                        setDragSource({ date: day.key, roleCode: roleItem.code, doctorId: assignment.doctorId });
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", assignment.doctorId);
+                      }}
+                      onDragEnd={() => {
+                        setDragSource(null);
+                        setDragOverKey(null);
+                      }}
+                      // â”€â”€ Drop target â”€â”€
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverKey(key);
+                        e.dataTransfer.dropEffect = droppable ? "move" : "none";
+                      }}
+                      onDragLeave={() => {
+                        setDragOverKey(prev => prev === key ? null : prev);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOverKey(null);
+                        if (!dragSource || !droppable) return;
+                        // Find who currently occupies the target cell (if anyone)
+                        const targetAssignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
+                        const targetDoctorId = targetAssignment.doctorId ?? undefined;
+                        // Open swap modal: giver = dragged doctor, target cell = drop destination
+                        // If target cell has a doctor, pre-select them as the "swap partner"
+                        onSwapCellClick(day.key, roleItem.code, dragSource.doctorId, targetDoctorId);
+                        setDragSource(null);
+                      }}
                     >
                       {disabled ? (
-                        <span className="blocked-cell">לא פעיל</span>
+                        <span className="blocked-cell">×œ× ×¤×¢×™×œ</span>
                       ) : assignment.pending ? (
-                        <span style={{ color: "var(--muted)", fontStyle: "italic" }}>ממתין</span>
+                        <span style={{ color: "var(--muted)", fontStyle: "italic" }}>×ž×ž×ª×™×Ÿ</span>
                       ) : assignedDoc ? (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                          <span style={{ fontWeight: 600 }}>{assignedDoc.name}</span>
-                          {clickable && <span style={{ fontSize: "10px", color: "#0284c7" }}>לחץ לשינוי</span>}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                          <span style={{ fontWeight: 600, userSelect: draggable ? "none" : undefined }}>
+                            {assignedDoc.name}
+                          </span>
+                          {draggable && !dragSource && (
+                            <span style={{ fontSize: "10px", color: "#64748b", opacity: 0.7 }}>â ¿ ×’×¨×•×¨</span>
+                          )}
+                          {clickable && !draggable && (
+                            <span style={{ fontSize: "10px", color: "#0284c7" }}>×œ×—×¥ ×œ×©×™× ×•×™</span>
+                          )}
                         </div>
                       ) : (
-                        <span style={{ color: "#cbd5e1" }}>-</span>
+                        <span style={{ color: "#cbd5e1" }}>
+                          {droppable ? "â¬‡ ×©×—×¨×¨ ×›××Ÿ" : "-"}
+                        </span>
                       )}
                     </td>
                   );
@@ -2131,11 +2219,12 @@ function PublishedRoster({
         </table>
       </div>
 
+
       {canReviewRequests(role) && (
         <div style={{ marginTop: "32px", borderTop: "1px solid var(--line)", paddingTop: "20px" }}>
-          <h3>בקשות החלפה והעברת תורנויות הממתינות לאישור</h3>
+          <h3>×‘×§×©×•×ª ×”×—×œ×¤×” ×•×”×¢×‘×¨×ª ×ª×•×¨× ×•×™×•×ª ×”×ž×ž×ª×™× ×•×ª ×œ××™×©×•×¨</h3>
           {pendingRequests.length === 0 ? (
-            <p style={{ color: "var(--muted)", fontSize: "14px" }}>אין בקשות תלויות ועומדות לאישור בחודש זה.</p>
+            <p style={{ color: "var(--muted)", fontSize: "14px" }}>××™×Ÿ ×‘×§×©×•×ª ×ª×œ×•×™×•×ª ×•×¢×•×ž×“×•×ª ×œ××™×©×•×¨ ×‘×—×•×“×© ×–×”.</p>
           ) : (
             <div className="list" style={{ marginTop: "12px" }}>
               {pendingRequests.map((req) => {
@@ -2150,19 +2239,19 @@ function PublishedRoster({
                 return (
                   <div className="list-row tall" key={req.id} style={{ borderLeft: "4px solid var(--blue)" }}>
                     <span>
-                      <strong>העברת תורנות ({roleObj?.name}) בתאריך {formattedDate}</strong>
+                      <strong>×”×¢×‘×¨×ª ×ª×•×¨× ×•×ª ({roleObj?.name}) ×‘×ª××¨×™×š {formattedDate}</strong>
                       <small style={{ fontSize: "13px", marginTop: "4px", color: "var(--ink)" }}>
-                        רופא רשום: <strong>{currentDoc?.name ?? "לא שובץ"}</strong> ➔ מחליף מוצע: <strong>{proposedDoc?.name ?? "ללא"}</strong>
+                        ×¨×•×¤× ×¨×©×•×: <strong>{currentDoc?.name ?? "×œ× ×©×•×‘×¥"}</strong> âž” ×ž×—×œ×™×£ ×ž×•×¦×¢: <strong>{proposedDoc?.name ?? "×œ×œ×"}</strong>
                       </small>
                       <small style={{ marginTop: "2px" }}>
-                        הוגש ע"י: {requesterDoc?.name} (תפקיד: {roleLabels[req.requesterRole]})
-                        {req.reason && ` · סיבה: "${req.reason}"`}
+                        ×”×•×’×© ×¢"×™: {requesterDoc?.name} (×ª×¤×§×™×“: {roleLabels[req.requesterRole]})
+                        {req.reason && ` Â· ×¡×™×‘×”: "${req.reason}"`}
                       </small>
                     </span>
                     <div className="row-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                       <input 
                         type="text" 
-                        placeholder="הערה לאישור (אופציונלי)..." 
+                        placeholder="×”×¢×¨×” ×œ××™×©×•×¨ (××•×¤×¦×™×•× ×œ×™)..." 
                         value={approveNotes[req.id] ?? ""} 
                         onChange={(e) => setApproveNotes({ ...approveNotes, [req.id]: e.target.value })}
                         style={{ minHeight: "34px", fontSize: "13px", width: "180px" }}
@@ -2173,7 +2262,7 @@ function PublishedRoster({
                         onClick={() => onApproveRequest(req.id, approveNotes[req.id] ?? "")}
                       >
                         <Check size={16} />
-                        אשר
+                        ××©×¨
                       </button>
                       <button 
                         className="danger" 
@@ -2181,7 +2270,7 @@ function PublishedRoster({
                         onClick={() => onRejectRequest(req.id)}
                       >
                         <X size={16} />
-                        דחה
+                        ×“×—×”
                       </button>
                     </div>
                   </div>
@@ -2243,19 +2332,19 @@ function PublishedRoster({
   return (
     <section className="panel">
       <div className="toolbar">
-        <h2>רופאים ומשתמשים</h2>
-        <span>{data.doctors.length} רשומות</span>
+        <h2>×¨×•×¤××™× ×•×ž×©×ª×ž×©×™×</h2>
+        <span>{data.doctors.length} ×¨×©×•×ž×•×ª</span>
         {loadTestData && (
           <button onClick={loadTestData} style={{ background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" }}>
-            טען 20 רופאי בדיקה ומשתמש mais
+            ×˜×¢×Ÿ 20 ×¨×•×¤××™ ×‘×“×™×§×” ×•×ž×©×ª×ž×© mais
           </button>
         )}
       </div>
       <div className="form-row doctor-add-row">
-        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
-        <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
-        <label className="check"><input type="checkbox" checked={form.canAngio} onChange={(event) => setForm({ ...form, canAngio: event.target.checked })} />אנגיו</label>
-        <button className="primary" onClick={addDoctor}>הוסף</button>
+        <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="×©× ×¨×•×¤×" />
+        <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">×ž×ª×ž×—×”</option><option value="senior">×‘×›×™×¨</option></select>
+        <label className="check"><input type="checkbox" checked={form.canAngio} onChange={(event) => setForm({ ...form, canAngio: event.target.checked })} />×× ×’×™×•</label>
+        <button className="primary" onClick={addDoctor}>×”×•×¡×£</button>
       </div>
       <div className="doctor-card-list">
         {data.doctors.map((doctor) => {
@@ -2274,43 +2363,43 @@ function PublishedRoster({
               <div className="doctor-card-main">
                 <span>
                   <b>{doctor.name}</b>
-                  <small>{doctor.group === "resident" ? "מתמחה" : "בכיר"}{doctor.canAngio ? " · אנגיו" : ""}{displayUsername ? ` · שם משתמש: ${displayUsername}` : ""}</small>
+                  <small>{doctor.group === "resident" ? "×ž×ª×ž×—×”" : "×‘×›×™×¨"}{doctor.canAngio ? " Â· ×× ×’×™×•" : ""}{displayUsername ? ` Â· ×©× ×ž×©×ª×ž×©: ${displayUsername}` : ""}</small>
                 </span>
                 <div className="row-actions">
-                  <button onClick={(event) => { event.stopPropagation(); toggleDoctor(doctor.id); }}>{doctor.active ? "פעיל" : "לא פעיל"}</button>
-                  <button className="danger" onClick={(event) => { event.stopPropagation(); removeDoctor(doctor.id); }}><Trash2 size={16} />הסר</button>
+                  <button onClick={(event) => { event.stopPropagation(); toggleDoctor(doctor.id); }}>{doctor.active ? "×¤×¢×™×œ" : "×œ× ×¤×¢×™×œ"}</button>
+                  <button className="danger" onClick={(event) => { event.stopPropagation(); removeDoctor(doctor.id); }}><Trash2 size={16} />×”×¡×¨</button>
                 </div>
               </div>
               {expanded ? (
                 <div className="doctor-edit" onClick={(event) => event.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי רופא</h3>
-                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם מלא של הרופא
-                      <input value={drName} onChange={(event) => setNameDrafts({ ...nameDrafts, [doctor.id]: event.target.value })} placeholder="שם רופא" />
+                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>×¤×¨×˜×™ ×¨×•×¤×</h3>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>×©× ×ž×œ× ×©×œ ×”×¨×•×¤×
+                      <input value={drName} onChange={(event) => setNameDrafts({ ...nameDrafts, [doctor.id]: event.target.value })} placeholder="×©× ×¨×•×¤×" />
                     </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>סוג
-                      <select value={drGroup} onChange={(event) => setGroupDrafts({ ...groupDrafts, [doctor.id]: event.target.value as DoctorGroup })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>×¡×•×’
+                      <select value={drGroup} onChange={(event) => setGroupDrafts({ ...groupDrafts, [doctor.id]: event.target.value as DoctorGroup })}><option value="resident">×ž×ª×ž×—×”</option><option value="senior">×‘×›×™×¨</option></select>
                     </label>
                     <label className="check" style={{ alignSelf: "end", minHeight: "38px" }}>
-                      <input type="checkbox" checked={drCanAngio} onChange={(event) => setAngioDrafts({ ...angioDrafts, [doctor.id]: event.target.checked })} />מורשה אנגיו
+                      <input type="checkbox" checked={drCanAngio} onChange={(event) => setAngioDrafts({ ...angioDrafts, [doctor.id]: event.target.checked })} />×ž×•×¨×©×” ×× ×’×™×•
                     </label>
                   </div>
                   
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", borderTop: "1px dashed var(--line)", paddingTop: "12px" }}>
-                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי כניסה והרשאות מערכת</h3>
-                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם משתמש
-                      <input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="שם משתמש" />
+                    <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>×¤×¨×˜×™ ×›× ×™×¡×” ×•×”×¨×©××•×ª ×ž×¢×¨×›×ª</h3>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>×©× ×ž×©×ª×ž×©
+                      <input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="×©× ×ž×©×ª×ž×©" />
                     </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>סיסמה חדשה
-                      <input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="השאר ריק לשמירה על הקודמת" />
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>×¡×™×¡×ž×” ×—×“×©×”
+                      <input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="×”×©××¨ ×¨×™×§ ×œ×©×ž×™×¨×” ×¢×œ ×”×§×•×“×ž×ª" />
                     </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה במערכת
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>×”×¨×©××” ×‘×ž×¢×¨×›×ª
                       <select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                     </label>
                   </div>
                   
                   <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--line)", paddingTop: "12px", marginTop: "4px" }}>
-                    <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור שינויים</button>
+                    <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>×©×ž×•×¨ ×©×™× ×•×™×™×</button>
                   </div>
                 </div>
               ) : null}
@@ -2331,9 +2420,9 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
   );
   return (
     <section className="panel">
-      <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} שינויים אחרי פרסום</span></div>
+      <div className="toolbar"><h2>×™×•×ž×Ÿ ×¤×¢×•×œ×•×ª</h2><span>{visible.length} ×©×™× ×•×™×™× ××—×¨×™ ×¤×¨×¡×•×</span></div>
       <div className="list audit-list schedule-audit">
-        {visible.length === 0 ? <div className="list-row">אין עדיין שינויי שיבוץ אחרי פרסום.</div> : null}
+        {visible.length === 0 ? <div className="list-row">××™×Ÿ ×¢×“×™×™×Ÿ ×©×™× ×•×™×™ ×©×™×‘×•×¥ ××—×¨×™ ×¤×¨×¡×•×.</div> : null}
         {visible.map((entry) => {
           const before = entry.before as { assignment?: Assignment | null; request?: ChangeRequest } | null;
           const after = entry.after as { assignment?: Assignment | null; request?: ChangeRequest } | null;
@@ -2343,15 +2432,15 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
             <div className="list-row audit-change" key={entry.id}>
               <span>
                 <b>{entry.actorName || entry.actorEmail}</b>
-                <small>{entry.displayTime} · {entry.actorEmail}</small>
+                <small>{entry.displayTime} Â· {entry.actorEmail}</small>
               </span>
               <span>
-                <b>{entry.date ?? ""} · {entry.roleCode ? roleByCode.get(entry.roleCode) ?? entry.roleCode : ""}</b>
-                <small>{doctorById.get(fromId ?? "") ?? "לא שובץ"} ← {doctorById.get(toId ?? "") ?? "לא שובץ"}</small>
+                <b>{entry.date ?? ""} Â· {entry.roleCode ? roleByCode.get(entry.roleCode) ?? entry.roleCode : ""}</b>
+                <small>{doctorById.get(fromId ?? "") ?? "×œ× ×©×•×‘×¥"} â† {doctorById.get(toId ?? "") ?? "×œ× ×©×•×‘×¥"}</small>
                 {entry.snapshotUrl && (
                   <small style={{ marginTop: "4px" }}>
                     <a href={entry.snapshotUrl} target="_blank" rel="noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>
-                      הצג צילום מסך לפני השינוי (Google Drive)
+                      ×”×¦×’ ×¦×™×œ×•× ×ž×¡×š ×œ×¤× ×™ ×”×©×™× ×•×™ (Google Drive)
                     </a>
                   </small>
                 )}
@@ -2384,14 +2473,14 @@ function DrivePanel({
   return (
     <section className="panel">
       <div className="toolbar">
-        <h2>חיבור וסנכרון לשרת</h2>
-        <span>מחובר כ-{roleLabels[actorRole || "resident"]}</span>
+        <h2>×—×™×‘×•×¨ ×•×¡× ×›×¨×•×Ÿ ×œ×©×¨×ª</h2>
+        <span>×ž×—×•×‘×¨ ×›-{roleLabels[actorRole || "resident"]}</span>
       </div>
       <div className="drive-grid" style={{ gridTemplateColumns: "1fr auto auto auto", gap: "10px" }}>
-        <label>כתובת שרת Apps Script
+        <label>×›×ª×•×‘×ª ×©×¨×ª Apps Script
           <input dir="ltr" value={getWebAppUrl()} disabled placeholder="https://script.google.com/macros/s/..." />
         </label>
-        <button onClick={handleLogout} className="danger" style={{ alignSelf: "end" }}><Mail size={17} />התנתק</button>
+        <button onClick={handleLogout} className="danger" style={{ alignSelf: "end" }}><Mail size={17} />×”×ª× ×ª×§</button>
         
         <button
           className="primary"
@@ -2400,16 +2489,16 @@ function DrivePanel({
             const remote = await loadWorkspace();
             const remoteChanged = data.updatedAt && remote.updatedAt !== data.updatedAt;
             if (remoteChanged) {
-              if (actorRole !== "senior-planner") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
-              const overwrite = window.confirm("הקובץ בשרת השתנה מאז הטעינה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
+              if (actorRole !== "senior-planner") throw new Error("×”×§×•×‘×¥ ×‘×©×¨×ª ×”×©×ª× ×”. ×˜×¢×Ÿ ×ž×—×“×© ××• ×‘×§×© ×ž×”×ž×ª×›× ×Ÿ ×”×‘×›×™×¨ ×œ×”×›×¨×™×¢.");
+              const overwrite = window.confirm("×”×§×•×‘×¥ ×‘×©×¨×ª ×”×©×ª× ×” ×ž××– ×”×˜×¢×™× ×” ×”××—×¨×•× ×”. ×œ×”×—×œ×™×£ ××•×ª×• ×‘×›×œ ×–××ª? ×ž×•×ž×œ×¥ ×§×•×“× ×œ×™×™×¦× ×’×™×‘×•×™.");
               if (!overwrite) return;
             }
             const saved = await saveWorkspace(data);
             setAndPersist(saved, true);
-          }, "הנתונים נשמרו בהצלחה בשרת.")}
+          }, "×”× ×ª×•× ×™× × ×©×ž×¨×• ×‘×”×¦×œ×—×” ×‘×©×¨×ª.")}
           disabled={busy}
         >
-          <Save size={17} />שמור שינויים לשרת
+          <Save size={17} />×©×ž×•×¨ ×©×™× ×•×™×™× ×œ×©×¨×ª
         </button>
         
         <button
@@ -2417,16 +2506,16 @@ function DrivePanel({
           onClick={() => run(async () => {
             const loaded = await loadWorkspace();
             setAndPersist(loaded, true);
-          }, "הנתונים רועננו מהשרת.")}
+          }, "×”× ×ª×•× ×™× ×¨×•×¢× × ×• ×ž×”×©×¨×ª.")}
           disabled={busy}
         >
-          <RefreshCw size={17} />טען מחדש מהשרת
+          <RefreshCw size={17} />×˜×¢×Ÿ ×ž×—×“×© ×ž×”×©×¨×ª
         </button>
       </div>
       <div className="list">
-        <div className="list-row"><span>שם משתמש מחובר</span><b dir="ltr">{credentials.username}</b></div>
-        <div className="list-row"><span>כתובת שרת</span><b dir="ltr" className="truncate">{getWebAppUrl()}</b></div>
-        <div className="list-row"><span>עדכון אחרון בשרת</span><b>{data.updatedAt ? new Date(data.updatedAt).toLocaleString("he-IL") : "טרם נשמר"}</b></div>
+        <div className="list-row"><span>×©× ×ž×©×ª×ž×© ×ž×—×•×‘×¨</span><b dir="ltr">{credentials.username}</b></div>
+        <div className="list-row"><span>×›×ª×•×‘×ª ×©×¨×ª</span><b dir="ltr" className="truncate">{getWebAppUrl()}</b></div>
+        <div className="list-row"><span>×¢×“×›×•×Ÿ ××—×¨×•×Ÿ ×‘×©×¨×ª</span><b>{data.updatedAt ? new Date(data.updatedAt).toLocaleString("he-IL") : "×˜×¨× × ×©×ž×¨"}</b></div>
       </div>
     </section>
   );
@@ -2435,9 +2524,9 @@ function DrivePanel({
 function CalendarPanel({ data, schedule, calendarInput, setCalendarInput, dryRunCalendar, mockCalendarSync }: { data: WorkspaceData; schedule: MonthSchedule; calendarInput: string; setCalendarInput: (value: string) => void; dryRunCalendar: () => void; mockCalendarSync: () => void }) {
   return (
     <section className="panel">
-      <div className="toolbar"><h2>יומן Google</h2><span>{schedule.status === "published" ? "מוכן לסנכרון" : "טיוטה לא מסתנכרנת"}</span></div>
+      <div className="toolbar"><h2>×™×•×ž×Ÿ Google</h2><span>{schedule.status === "published" ? "×ž×•×›×Ÿ ×œ×¡× ×›×¨×•×Ÿ" : "×˜×™×•×˜×” ×œ× ×ž×¡×ª× ×›×¨× ×ª"}</span></div>
       <div className="form-row"><input dir="ltr" value={calendarInput} onChange={(event) => setCalendarInput(event.target.value)} placeholder="Shared Calendar URL or Calendar ID" /><button onClick={dryRunCalendar}>Dry run</button><button className="primary" onClick={mockCalendarSync}>Mock sync</button></div>
-      <div className="list"><div className="list-row"><span>Calendar ID</span><b dir="ltr">{normalizeCalendarId(calendarInput) || "לא הוגדר"}</b></div><div className="list-row"><span>אירועים בתצוגה</span><b>{data.calendar.lastDryRun.length}</b></div></div>
+      <div className="list"><div className="list-row"><span>Calendar ID</span><b dir="ltr">{normalizeCalendarId(calendarInput) || "×œ× ×”×•×’×“×¨"}</b></div><div className="list-row"><span>××™×¨×•×¢×™× ×‘×ª×¦×•×’×”</span><b>{data.calendar.lastDryRun.length}</b></div></div>
       <pre className="codebox">{JSON.stringify(data.calendar.lastDryRun, null, 2)}</pre>
     </section>
   );
@@ -2446,8 +2535,8 @@ function CalendarPanel({ data, schedule, calendarInput, setCalendarInput, dryRun
 function SettingsPanel({ data, scheduleKey, importText, setImportText, importJson, exportJson, exportCsv }: { data: WorkspaceData; scheduleKey: string; importText: string; setImportText: (value: string) => void; importJson: () => void; exportJson: () => void; exportCsv: () => void }) {
   return (
     <section className="panel two">
-      <div><h2>יבוא / יצוא</h2><textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="הדבק JSON מלא לטעינה" /><div className="actions"><button onClick={importJson}><Upload size={17} />ייבא JSON</button><button onClick={exportJson}><Download size={17} />ייצא JSON</button><button onClick={exportCsv}><Download size={17} />ייצא CSV</button></div></div>
-      <div className="list"><div className="list-row"><span>Schema</span><b>{data.schemaVersion}</b></div><div className="list-row"><span>חודש פעיל</span><b>{scheduleKey}</b></div><div className="list-row"><span>עודכן מקומית</span><b>{new Date(data.updatedAt).toLocaleString("he-IL")}</b></div><div className="list-row"><span>Audit entries</span><b>{data.auditLog.length}</b></div></div>
+      <div><h2>×™×‘×•× / ×™×¦×•×</h2><textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="×”×“×‘×§ JSON ×ž×œ× ×œ×˜×¢×™× ×”" /><div className="actions"><button onClick={importJson}><Upload size={17} />×™×™×‘× JSON</button><button onClick={exportJson}><Download size={17} />×™×™×¦× JSON</button><button onClick={exportCsv}><Download size={17} />×™×™×¦× CSV</button></div></div>
+      <div className="list"><div className="list-row"><span>Schema</span><b>{data.schemaVersion}</b></div><div className="list-row"><span>×—×•×“×© ×¤×¢×™×œ</span><b>{scheduleKey}</b></div><div className="list-row"><span>×¢×•×“×›×Ÿ ×ž×§×•×ž×™×ª</span><b>{new Date(data.updatedAt).toLocaleString("he-IL")}</b></div><div className="list-row"><span>Audit entries</span><b>{data.auditLog.length}</b></div></div>
     </section>
   );
 }

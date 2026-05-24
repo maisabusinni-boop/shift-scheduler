@@ -78,10 +78,6 @@ function doPost(e) {
     
     // Save schedule modifications
     if (action === 'save') {
-      if (user.role !== 'senior-planner' && user.role !== 'chief-resident') {
-        return makeResponse_({ error: "אין לך הרשאה לשמור שינויים בסידור העבודה." });
-      }
-      
       var clientWorkspace = request.data;
       if (!clientWorkspace) {
         return makeResponse_({ error: "לא נשלחו נתונים לשמירה." });
@@ -91,11 +87,13 @@ function doPost(e) {
       clientWorkspace.users = workspace.users;
       clientWorkspace.updatedAt = new Date().toISOString();
       
-      // Trigger Google Calendar Server-Side Sync
-      try {
-        syncCalendar_(clientWorkspace);
-      } catch (calErr) {
-        Logger.log("Calendar sync failed: " + calErr.toString());
+      // Trigger Google Calendar Server-Side Sync (only for planners/chiefs)
+      if (user.role === 'senior-planner' || user.role === 'chief-resident') {
+        try {
+          syncCalendar_(clientWorkspace);
+        } catch (calErr) {
+          Logger.log("Calendar sync failed: " + calErr.toString());
+        }
       }
       
       file.setContent(JSON.stringify(clientWorkspace, null, 2));
