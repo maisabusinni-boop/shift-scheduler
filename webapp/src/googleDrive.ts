@@ -1,7 +1,7 @@
 import { migrateWorkspace } from "@/migration";
 import type { WorkspaceData, AppUser } from "@/types";
 
-let webAppUrl = localStorage.getItem("department-shift-scheduler.webapp-url") || "";
+let webAppUrl = localStorage.getItem("department-shift-scheduler.webapp-url") || "https://script.google.com/macros/s/AKfycbzrLQhlCihebMkFfj0PeWdVUUsheh78UgmqdMkL8kPAvsJuTR5B8h9MkIS3Bc_tJEneNw/exec";
 let loggedInUsername = localStorage.getItem("department-shift-scheduler.username") || "";
 let loggedInPasswordHash = localStorage.getItem("department-shift-scheduler.password-hash") || "";
 

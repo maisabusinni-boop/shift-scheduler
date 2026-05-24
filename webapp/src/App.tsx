@@ -115,6 +115,7 @@ export function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [plannerName, setPlannerName] = useState("");
   const [showBootstrap, setShowBootstrap] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const [calendarInput, setCalendarInput] = useState(data.calendar.calendarInput);
   const [deviceId] = useState(() => loadDeviceId());
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
@@ -684,10 +685,12 @@ export function App() {
           {message ? <div className="notice" style={{ marginBottom: "16px" }}>{message}</div> : null}
           
           <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="drive-grid" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              כתובת שרת Apps Script
-              <input dir="ltr" value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." />
-            </label>
+            {(showUrlInput || !loginUrl) && (
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                כתובת שרת Apps Script
+                <input dir="ltr" value={loginUrl} onChange={(e) => setLoginUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..." />
+              </label>
+            )}
             
             {!showBootstrap ? (
               <>
@@ -732,6 +735,12 @@ export function App() {
                 </div>
               </>
             )}
+            
+            <div style={{ textAlign: "center", marginTop: "12px", borderTop: "1px solid var(--line, #d8dfeb)", paddingTop: "12px" }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); setShowUrlInput(!showUrlInput); }} style={{ fontSize: "12px", color: "var(--muted, #64748b)" }}>
+                {showUrlInput ? "הסתר הגדרות שרת" : "הגדרות שרת (מתקדם)"}
+              </a>
+            </div>
           </form>
         </section>
       </main>
