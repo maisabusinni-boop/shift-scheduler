@@ -184,14 +184,14 @@ function getDatabaseFile_() {
       locale: "he-IL"
     },
     roles: [
-      { code: "resident-on-call", name: "תורן", color: "Red", eligibilityRule: "resident-only", order: 1 },
-      { code: "senior-a", name: "כונן א", color: "Blue", eligibilityRule: "senior-only", order: 2 },
-      { code: "senior-b", name: "כונן ב", color: "Green", eligibilityRule: "senior-only", order: 3 },
-      { code: "angio", name: "כונן אנגיו", color: "Yellow", eligibilityRule: "angio-only", order: 4 },
-      { code: "half-resident", name: "תורן חצי מתמחה", color: "Orange", eligibilityRule: "resident-then-senior", order: 5 },
-      { code: "half-senior", name: "תורן חצי מומחה", color: "Purple", eligibilityRule: "senior-then-resident", order: 6 },
-      { code: "friday-morning-resident", name: "שישי בוקר מתמחה", color: "Gray", eligibilityRule: "resident-only", order: 7 },
-      { code: "friday-morning-senior", name: "שישי בוקר מומחה", color: "Gray", eligibilityRule: "senior-only", order: 8 }
+      { code: "resident-on-call", name: "תורן", color: "#dc2626", eligibilityRule: "resident-only", order: 1 },
+      { code: "senior-a", name: "כונן א", color: "#2563eb", eligibilityRule: "senior-only", order: 2 },
+      { code: "senior-b", name: "כונן ב", color: "#16a34a", eligibilityRule: "senior-only", order: 3 },
+      { code: "angio", name: "כונן אנגיו", color: "#ca8a04", eligibilityRule: "angio-only", order: 4 },
+      { code: "half-resident", name: "תורן חצי מתמחה", color: "#ea580c", eligibilityRule: "resident-then-senior", order: 5 },
+      { code: "half-senior", name: "תורן חצי מומחה", color: "#9333ea", eligibilityRule: "senior-then-resident", order: 6 },
+      { code: "friday-morning-resident", name: "שישי בוקר מתמחה", color: "#64748b", eligibilityRule: "resident-only", order: 7 },
+      { code: "friday-morning-senior", name: "שישי בוקר מומחה", color: "#475569", eligibilityRule: "senior-only", order: 8 }
     ],
     doctors: [],
     users: [],

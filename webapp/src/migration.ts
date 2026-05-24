@@ -42,14 +42,13 @@ export function migrateWorkspace(input: unknown): WorkspaceData {
 }
 
 function normalizeWorkspace(data: WorkspaceData): WorkspaceData {
-  const retiredRoles = new Set(["senior-b", "friday-morning-senior"]);
   const roleCodes = new Set(roles.map((role) => role.code));
   const schedules = Object.fromEntries(
     Object.entries(data.schedules).map(([key, schedule]) => [
       key,
       {
         ...schedule,
-        assignments: Object.fromEntries(Object.entries(schedule.assignments).filter(([assignmentKey]) => !retiredRoles.has(assignmentKey.split("|")[1]))),
+        assignments: Object.fromEntries(Object.entries(schedule.assignments).filter(([assignmentKey]) => roleCodes.has(assignmentKey.split("|")[1] as never))),
         exclusions: schedule.exclusions.filter((exclusion) => exclusion.roleCode && roleCodes.has(exclusion.roleCode))
       }
     ])
@@ -62,7 +61,7 @@ function normalizeWorkspace(data: WorkspaceData): WorkspaceData {
     changeRequests: data.changeRequests.filter((request) => roleCodes.has(request.roleCode)),
     calendar: {
       ...data.calendar,
-      syncRecords: Object.fromEntries(Object.entries(data.calendar.syncRecords).filter(([assignmentKey]) => !retiredRoles.has(assignmentKey.split("|")[1])))
+      syncRecords: Object.fromEntries(Object.entries(data.calendar.syncRecords).filter(([assignmentKey]) => roleCodes.has(assignmentKey.split("|")[1] as never)))
     }
   };
 }

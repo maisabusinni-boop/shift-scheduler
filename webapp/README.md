@@ -1,6 +1,6 @@
 # Department Shift Scheduler Chrome App
 
-Static Hebrew RTL scheduling app that runs entirely in Chrome. The app uses Google login for practical role separation, browser storage for fast local work, and one visible Google Drive JSON file as the shared workspace.
+Static Hebrew RTL scheduling app that runs in Chrome. The app uses username/password login through the Google Apps Script backend, browser storage for fast local work, and one visible Google Drive JSON file as the shared workspace.
 
 ## Run for development
 
@@ -40,20 +40,14 @@ During development:
 
 After installation, the scheduler opens from a desktop/start-menu icon like an app window. Internally it is still Chrome, but users do not need to interact with a visible URL.
 
-For a final shared build, serve the `dist/` folder from a stable static origin, then install it from Chrome. Google Drive OAuth works best from an `http://localhost`, `http://127.0.0.1`, or `https://...` origin that is listed in the Google OAuth client settings.
-
-For GitHub Pages, add this origin to the Google OAuth Web Client:
-
-```text
-https://YOUR_USERNAME.github.io
-```
+For a final shared build, serve the `dist/` folder from a stable static origin, then install it from Chrome. The browser app calls the deployed Apps Script backend, so Drive and Calendar permissions are controlled by the Apps Script deployment owner rather than by a browser OAuth client.
 
 ## What is implemented
 
 - Chrome-only React/Vite app with no server, Prisma, or database service.
 - PWA manifest, icons, service worker, and install prompt support.
-- Polished Sheet-like RTL roster board with the same eight roles and colors.
-- Google identity flow using `openid email profile` plus Drive file access.
+- Polished Sheet-like RTL roster board with the current eight active roster roles and colors.
+- Username/password login through the Apps Script backend.
 - Practical app roles: resident, senior, chief resident, senior planner.
 - Senior-planner bootstrap for the first signed-in user.
 - Role-separated tabs and action permissions.
@@ -67,16 +61,10 @@ https://YOUR_USERNAME.github.io
 - Calendar settings and browser-side dry-run/mock sync payloads.
 - JSON and CSV export/import.
 
-## Google login and Drive setup
+## Apps Script backend and Drive setup
 
-The deployed app is preconfigured with this Google OAuth Web Client ID:
+The app is preconfigured with an Apps Script Web App URL in `src/googleDrive.ts`. If you deploy a new backend, paste the new `/exec` URL into the advanced URL field on the login screen.
 
-```text
-264155836518-nqcoltph397ta3ua8hpemsegk3v5o5ck.apps.googleusercontent.com
-```
+The first successful bootstrap creates the senior planner account. After that, the senior planner adds users, assigns app roles, links users to doctors, and sets passwords.
 
-Its authorized JavaScript origins are `https://maisabusinni-boop.github.io` and `http://127.0.0.1:3000`. Connect with Google, then create or open the shared `department-shift-scheduler.json` file.
-
-The first signed-in Google user can bootstrap as the senior planner. After that, the senior planner adds users by Google email and assigns app roles.
-
-The app requests Drive file access and Google profile/email information from the browser. For a shared department workflow, keep the JSON file visible in a shared Drive folder.
+The browser talks only to Apps Script. Apps Script owns the Drive file access, stores the shared `department-shift-scheduler.json` file, uploads swap snapshot images, and runs optional Calendar sync.

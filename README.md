@@ -1,126 +1,96 @@
-# Hebrew Sheets-Master Calendar-Viewer Sync
+# Department Shift Scheduler
 
-This folder contains a Google Apps Script implementation for a Hebrew RTL department roster where the Google Sheet is the source of truth and Google Calendar is a read-only viewer.
+Hebrew RTL department roster app. The current system is a static React/Vite Chrome PWA in `webapp/`, with Google Apps Script in `Code.gs` acting as the shared backend for login, Drive JSON storage, snapshot upload, and optional Calendar sync.
 
-## Install
+The app no longer uses a Google Sheet as the source of truth. The shared source of truth is the visible Drive JSON file `department-shift-scheduler.json`.
 
-1. Open the roster Google Sheet.
-2. Go to **Extensions > Apps Script**.
-3. Paste the contents of `Code.gs` into the Apps Script editor.
-4. Replace `PUT_CALENDAR_ID_HERE` in `CONFIG.CALENDAR_ID` with the shared calendar ID.
-   - Alternatively, set a Script Property named `CALENDAR_ID`.
-5. Save the script and reload the Google Sheet.
-6. Use **סנכרון תורנויות > הגדר / תקן תבנית**.
-7. Open **סנכרון תורנויות > פתח לוח בקרה** to use the sidebar actions, or use the new `Dashboard` tab as the app-like home screen.
-8. Fill `_Doctors` with doctor names:
-   - Column A: `מתמחים`
-   - Column B: `בכירים`
-   - Column C: `כונני אנגיו`
-   - Column D: `כל הרופאים`, rebuilt automatically
-   - Column E: `מתמחים ואז בכירים`, rebuilt automatically
-   - Column F: `בכירים ואז מתמחים`, rebuilt automatically
-9. Use **סנכרון תורנויות > צור חודש חדש** to create each monthly roster.
-10. Build the monthly schedule while `G1` is `טיוטה`.
-11. Use **פרסם חודש נוכחי** when the month is ready. Publishing runs validation first and refuses hard errors.
-12. Run **סנכרון תורנויות > סנכרן את החודש הנוכחי** or **סנכרן חודשים שפורסמו**.
-13. Use **התקן סנכרון שעתי** after testing with a test calendar.
+## Current Architecture
 
-## Dashboard and Sidebar
+- `webapp/`: browser app, installable as a Chrome/PWA window.
+- `Code.gs`: Apps Script web app API proxy deployed as the backend.
+- `department-shift-scheduler.json`: shared Drive database file created or opened by the backend.
+- GitHub Pages workflow: builds and deploys the static app from `webapp/dist`.
 
-The script creates a visible `Dashboard` tab as the first sheet. It is a status and command surface, not a data table:
+## Active Role Model
 
-- Shows the active month, draft/published state, validation state, issue counts, matching exceptions tab, and last sync time.
-- Uses large action cells as a visual launcher map. Actual script execution happens from the custom menu or sidebar.
-- Keeps `_Doctors` visible for admin input while `_RoleConfig` and `_SyncState` remain hidden/protected.
+The webapp role list in `webapp/src/domain.ts` is canonical. The backend default workspace in `Code.gs` uses the same eight active schedule roles:
 
-Use **סנכרון תורנויות > פתח לוח בקרה** to open the sidebar. The sidebar provides guided buttons for setup/repair, create month, validate, publish/unpublish, sync, open exceptions, open doctors, and jump back to the dashboard.
+| Code | Hebrew label | Eligibility |
+| --- | --- | --- |
+| `resident-on-call` | `תורן` | residents only |
+| `senior-a` | `כונן א` | seniors only |
+| `senior-b` | `כונן ב` | seniors only |
+| `angio` | `כונן אנגיו` | doctors marked as Angio |
+| `half-resident` | `תורן חצי מתמחה` | residents first, then seniors |
+| `half-senior` | `תורן חצי מומחה` | seniors first, then residents |
+| `friday-morning-resident` | `שישי בוקר מתמחה` | residents only, Fridays only |
+| `friday-morning-senior` | `שישי בוקר מומחה` | seniors only, Fridays only |
 
-The sidebar is optimized for speed:
+For `אילוצים`, the app intentionally shows a smaller blocking list. `כונן א` and `כונן ב` are represented by one `כונן` blocker, and `שישי בוקר מומחה` is covered by that same senior on-call blocker because it is linked to the Friday senior assignment.
 
-- Status loads from the last saved validation result instead of rescanning the whole month.
-- Editing the roster or exceptions marks the month as `צריך בדיקה` rather than repainting every rule result immediately.
-- Use **בדוק וסמן בעיות** to run the full validation pass and paint issues on the sheet.
-- The issue list in the sidebar shows the latest saved errors/warnings; click an issue to jump to its cell.
-- Doctors can add exception blocks from the sidebar form without editing the exceptions grid directly.
-- The exception form includes a compact month calendar; doctors can select multiple dates before submitting one block.
+## Backend Setup
 
-## Monthly Sheet Layout
+1. Open Google Apps Script.
+2. Paste the contents of `Code.gs`.
+3. Deploy as a Web App.
+4. Use these deployment settings:
+   - Execute as: the owner/admin account.
+   - Who has access: Anyone.
+5. Copy the Web App `/exec` URL.
+6. In the PWA login screen, open the advanced URL field and paste that URL if it differs from the bundled default.
 
-The visible monthly tab uses this structure:
+The first successful bootstrap creates the first `senior-planner` user. After that, only the senior planner manages doctors, users, roles, and passwords from inside the app.
 
-```text
-A1: חודש          B1: <month number>
-C1: שנה           D1: <year>
-F1: סטטוס סנכרון  G1: טיוטה or פורסם
+## Webapp Development
 
-Row 3:
-תאריך | יום | תורן | כונן א | כונן ב | כונן אנגיו | תורן חצי מתמחה | תורן חצי מומחה | שישי בוקר מתמחה | שישי בוקר מומחה
+```bash
+cd webapp
+npm install
+npm run dev
 ```
 
-Data starts on row 4.
+Open `http://127.0.0.1:3000`.
 
-The monthly board is RTL and limited to 31 schedule rows, so it always looks like a month. Short months leave the extra bottom rows greyed out.
-Because there are eight role columns, roles occupy columns C through J.
+Before pushing or deploying:
 
-Use **צור חודש חדש** to create a new tab such as `2026-06`. The script fills the correct dates and Hebrew day letters automatically. If you manually change `B1` or `D1`, use **רענן תאריכי חודש** to regenerate the date/day columns without touching doctor assignments.
+```bash
+cd webapp
+npm run deploy:check
+```
 
-If an existing sheet still has the old English role headers, **הגדר / תקן תבנית** migrates the assignment columns into the new Hebrew order before replacing the headers. If an existing Hebrew sheet has one old `שישי בוקר` column, its data is moved into `שישי בוקר מומחה`.
+This runs typecheck, tests, and the production build.
 
-## Monthly Exceptions
+## Main Workflows
 
-When a new monthly roster is created, the script also creates a visible tab named `Exceptions YYYY-MM`.
-Doctors use that tab before scheduling starts:
+- Senior planner bootstraps the first account.
+- Planner adds doctors and creates users with app roles.
+- Draft schedules can be edited by the senior planner and chief resident.
+- Published schedules are visible to regular doctors.
+- Published schedule swaps can be started from the published roster.
+- Direct swaps by permitted users create audit entries and Drive snapshot images.
+- Other swaps become structured change requests for review.
+- Autosave sends schedule changes to the Apps Script backend after local edits.
+- Apps Script preserves server-side user credentials when saving workspace data.
+- Calendar sync runs server-side for planner/chief saves when a calendar ID is configured.
 
-- Columns A-B contain the same date/day rows as the roster.
-- Columns C-J contain the same role headers as the roster.
-- Row 2 contains a doctor-facing instruction banner.
-- A name in a role/date cell means that doctor must not be assigned to that role on that date.
-- Multiple doctors can be entered in the same cell, one name per line.
-- To block a full day, enter the doctor name in every active role column for that date.
+## Validation Rules
 
-The exceptions tab is not synced to Google Calendar. During rule checks and calendar sync, the matching roster tab treats exception conflicts as hard errors. Misspelled doctor names in the exceptions tab are also marked red and must match `_Doctors`.
-
-## Assignment Rules
-
-Use **סנכרון תורנויות > בדוק כללי שיבוץ** before publishing.
-For responsiveness, edits now mark the month as needing a fresh check; the full rule check and cell painting run when you choose **בדוק כללי שיבוץ**, **בדוק וסמן בעיות**, or **פרסם חודש נוכחי**.
-Errors are marked red; warnings are marked yellow.
-Error/warning colors are intentionally prominent and bold. Non-Friday rows in the two Friday morning columns are disabled: their dropdowns are removed and typed/pasted values are cleared.
-
-- Column C `תורן`: residents only.
-- Columns D/E `כונן א` / `כונן ב`: seniors only.
-- Column F `כונן אנגיו`: only doctors listed in `_Doctors` column C.
-- Column G `תורן חצי מתמחה`: dropdown shows residents first, then seniors.
-- Column H `תורן חצי מומחה`: dropdown shows seniors first, then residents.
-- Column I `שישי בוקר מתמחה`: residents only.
-- Column J `שישי בוקר מומחה`: seniors only.
-- Residents are blocked from any role outside C/G/H/I.
-- The same doctor cannot appear twice on the same day, except the allowed Friday senior link below.
-- Columns C and H cannot repeat the same doctor two days in a row.
-- Column G consecutive repeats are marked as warnings for manual approval.
+- `תורן`: residents only.
+- `כונן א` and `כונן ב`: seniors only.
+- `כונן אנגיו`: Angio-enabled doctors only.
+- `תורן חצי מתמחה`: residents before seniors.
+- `תורן חצי מומחה`: seniors before residents.
+- `שישי בוקר מתמחה`: residents only and Friday-only.
+- The same doctor cannot appear twice on the same day.
+- `תורן` and `תורן חצי מומחה` cannot repeat the same doctor on consecutive days.
+- Consecutive `תורן חצי מתמחה` assignments are warnings for manual review.
 - Friday `כונן א`, Friday `שישי בוקר מומחה`, and the following Saturday `תורן חצי מומחה` are linked.
-- Editing any one of those three cells autofills the other two.
-- Clearing one linked cell clears the whole linked trio.
 
-## Sync Rules
+## Useful Files
 
-- Only sheets with `G1 = פורסם` sync to Calendar.
-- Each filled role cell becomes one all-day Calendar event.
-- Event title format: `<Role> | <Doctor>`.
-- Blank cells and `Pending` / `ממתין` / `טרם שובץ` / `לא שובץ` cells produce no Calendar event.
-- If a previous event exists and the cell becomes blank or `Pending`, the event is deleted.
-- Event IDs are stored in the hidden `_SyncState` tab.
-- Calendar edits are not synced back to the Sheet.
-
-## Test Checklist
-
-- Draft month creates no events.
-- Published month creates all-day events for each filled role.
-- Searching Calendar for a doctor name finds that doctor's role events.
-- Re-running sync creates no duplicates.
-- Changing a doctor updates the existing event.
-- Clearing a role deletes the event.
-- Marking a role `Pending` deletes the event.
-- `Dashboard` exists as the first tab after setup/repair.
-- `פתח לוח בקרה` opens the sidebar and shows current status.
-- `פרסם חודש נוכחי` refuses hard validation errors and colors `G1` as published only when allowed.
+- `webapp/src/domain.ts`: canonical schedule roles and eligibility helpers.
+- `webapp/src/migration.ts`: workspace normalization.
+- `webapp/src/permissions.ts`: role permissions.
+- `webapp/src/validation.ts`: schedule validation.
+- `webapp/src/googleDrive.ts`: browser API client for Apps Script.
+- `Code.gs`: Apps Script backend implementation.

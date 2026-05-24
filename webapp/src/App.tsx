@@ -23,7 +23,7 @@ import {
 import { createAuditEntry, type ActorContext, type AuditInput } from "@/audit";
 import { resolveSession, type SessionUser } from "@/auth";
 import { buildCalendarPreview, normalizeCalendarId } from "@/calendar";
-import { cellKey, createId, doctorSortForRole, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
+import { cellKey, createId, doctorSortForRole, exclusionRoleCodesForAssignment, exclusionRoles, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
 import {
   getWebAppUrl,
   setWebAppUrl,
@@ -136,7 +136,14 @@ export function App() {
   const [requestForm, setRequestForm] = useState({ date: "", roleCode: ROLE_CODES.RESIDENT_ON_CALL as RoleCode, proposedDoctorId: "", reason: "" });
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
-  const [swapModalCell, setSwapModalCell] = useState<{ date: string; roleCode: RoleCode; giverDoctorId: string; targetDoctorId?: string } | null>(null);
+  const [swapModalCell, setSwapModalCell] = useState<{
+    date: string;
+    roleCode: RoleCode;
+    giverDoctorId: string;
+    sourceDate?: string;
+    sourceRoleCode?: RoleCode;
+    targetDoctorId?: string;
+  } | null>(null);
   const [swapTargetDoctorId, setSwapTargetDoctorId] = useState("");
   const [swapReason, setSwapReason] = useState("");
   const lastSavedVersionRef = useRef<string | null>(null);
@@ -334,11 +341,7 @@ export function App() {
     commitChange({
       mutator: (_draft, currentSchedule) => {
         const assignment: Assignment = value === "__pending" || !value ? { doctorId: null, pending: value === "__pending" } : { doctorId: value, pending: false };
-        const keys = [cellKey(date, roleCode)];
-        const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-        if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
-          keys.push(cellKey(date, ROLE_CODES.SENIOR_A), cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR));
-        }
+        const keys = linkedAssignmentKeys(date, roleCode);
         const uniqueKeys = Array.from(new Set(keys));
         const before = Object.fromEntries(uniqueKeys.map((item) => [item, currentSchedule.assignments[item] ?? null]));
         uniqueKeys.forEach((item) => {
@@ -392,6 +395,7 @@ export function App() {
     const priorityRoles = [
       ROLE_CODES.ANGIO,
       ROLE_CODES.SENIOR_A,
+      ROLE_CODES.SENIOR_B,
       ROLE_CODES.FRIDAY_MORNING_RESIDENT,
       ROLE_CODES.RESIDENT_ON_CALL,
       ROLE_CODES.HALF_SENIOR,
@@ -409,10 +413,7 @@ export function App() {
     });
     
     function isAssignedOnDate(doctorId: string, dateStr: string) {
-      return priorityRoles.some(roleCode => {
-        const key = cellKey(dateStr, roleCode);
-        return newAssignments[key]?.doctorId === doctorId;
-      });
+      return Object.entries(newAssignments).some(([key, assignment]) => key.startsWith(`${dateStr}|`) && assignment.doctorId === doctorId);
     }
     
     function getAssignedDoctor(dateStr: string, roleCode: RoleCode) {
@@ -436,7 +437,7 @@ export function App() {
           const prevFriday = previousDayKey(dateStr);
           const fridaySeniorA = getAssignedDoctor(prevFriday, ROLE_CODES.SENIOR_A);
           if (fridaySeniorA) {
-            const isExcluded = exclusionsSet.has(`${dateStr}|*|${fridaySeniorA}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${fridaySeniorA}`);
+            const isExcluded = isDoctorExcluded(exclusionsSet, dateStr, roleCode, fridaySeniorA);
             const alreadyAssigned = isAssignedOnDate(fridaySeniorA, dateStr);
             if (!isExcluded && !alreadyAssigned) {
               newAssignments[cellKey(dateStr, roleCode)] = { doctorId: fridaySeniorA, pending: false };
@@ -449,7 +450,7 @@ export function App() {
         // Find eligible doctors
         let candidates = activeDoctors.filter(doc => {
           if (!isDoctorEligibleForRole(doc, role)) return false;
-          if (exclusionsSet.has(`${dateStr}|*|${doc.id}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${doc.id}`)) return false;
+          if (isDoctorExcluded(exclusionsSet, dateStr, roleCode, doc.id)) return false;
           if (isAssignedOnDate(doc.id, dateStr)) return false;
           
           const prevDate = previousDayKey(dateStr);
@@ -460,7 +461,7 @@ export function App() {
           
           if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
             const nextSaturday = nextDayKey(dateStr);
-            const satExcluded = exclusionsSet.has(`${nextSaturday}|*|${doc.id}`) || exclusionsSet.has(`${nextSaturday}|${ROLE_CODES.HALF_SENIOR}|${doc.id}`);
+            const satExcluded = isDoctorExcluded(exclusionsSet, nextSaturday, ROLE_CODES.HALF_SENIOR, doc.id);
             if (satExcluded) return false;
           }
           
@@ -470,7 +471,7 @@ export function App() {
         if (candidates.length === 0) {
           candidates = activeDoctors.filter(doc => {
             if (!isDoctorEligibleForRole(doc, role)) return false;
-            if (exclusionsSet.has(`${dateStr}|*|${doc.id}`) || exclusionsSet.has(`${dateStr}|${roleCode}|${doc.id}`)) return false;
+            if (isDoctorExcluded(exclusionsSet, dateStr, roleCode, doc.id)) return false;
             if (isAssignedOnDate(doc.id, dateStr)) return false;
             return true;
           });
@@ -490,6 +491,7 @@ export function App() {
           
           if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
             const nextSaturday = nextDayKey(dateStr);
+            newAssignments[cellKey(dateStr, ROLE_CODES.FRIDAY_MORNING_SENIOR)] = { doctorId: chosen.id, pending: false };
             newAssignments[cellKey(nextSaturday, ROLE_CODES.HALF_SENIOR)] = { doctorId: chosen.id, pending: false };
             doctorAssignmentCounts[chosen.id]++;
           }
@@ -916,10 +918,11 @@ export function App() {
     currentSchedule: MonthSchedule,
     date: string,
     roleCode: RoleCode,
-    giverDoc: Doctor,
-    receiverDoc: Doctor,
+    beforeDoc: Doctor | null,
+    afterDoc: Doctor | null,
     reason: string,
-    actorName: string
+    actorName: string,
+    changeCode: string
   ): Promise<string> {
     return new Promise((resolve) => {
       const canvas = document.createElement("canvas");
@@ -974,31 +977,38 @@ export function App() {
       ctx.fillText(formattedTime, 630, 155);
 
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("מהות השינוי:", 750, 185);
+      ctx.fillText("קוד שינוי:", 750, 185);
+      ctx.font = "bold 14px ui-monospace, SFMono-Regular, Consolas, monospace";
+      ctx.fillStyle = "#1d4ed8";
+      ctx.fillText(changeCode, 630, 185);
+
+      ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = "#334155";
+      ctx.fillText("מהות השינוי:", 750, 215);
       ctx.fillStyle = "#b91c1c";
       
       const roleName = workspaceData.roles.find(r => r.code === roleCode)?.name ?? roleCode;
       const [y, m, d] = date.split("-");
       const formattedDate = `${d}/${m}/${y}`;
-      ctx.fillText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`, 750, 185);
+      ctx.fillText(`שינוי תורנות (${roleName}) בתאריך ${formattedDate}:`, 750, 215);
       
       ctx.fillStyle = "#1e293b";
       ctx.font = "14px system-ui, -apple-system, sans-serif";
-      const textWidth = ctx.measureText(`העברת תורנות (${roleName}) בתאריך ${formattedDate}:`).width;
-      ctx.fillText(`ד"ר ${giverDoc.name} ➔ ד"ר ${receiverDoc.name}`, 750 - textWidth - 10, 185);
+      const textWidth = ctx.measureText(`שינוי תורנות (${roleName}) בתאריך ${formattedDate}:`).width;
+      ctx.fillText(`${beforeDoc ? `ד"ר ${beforeDoc.name}` : "לא שובץ"} ➔ ${afterDoc ? `ד"ר ${afterDoc.name}` : "לא שובץ"}`, 750 - textWidth - 10, 215);
 
       ctx.fillStyle = "#334155";
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("סיבת העברה:", 750, 215);
+      ctx.fillText("סיבת העברה:", 750, 245);
       ctx.font = "italic 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText(reason || "לא צוינה סיבה", 630, 215);
+      ctx.fillText(reason || "לא צוינה סיבה", 630, 245);
 
       // 4. Draw Context Table
       ctx.fillStyle = "#334155";
       ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
-      ctx.fillText("מצב השיבוץ באותו יום (לפני השינוי):", 770, 260);
+      ctx.fillText("מצב השיבוץ באותו יום (לפני השינוי):", 770, 270);
 
-      const tableTop = 275;
+      const tableTop = 285;
       const tableLeft = 30;
       const tableWidth = 740;
       const tableHeight = 60;
@@ -1084,15 +1094,22 @@ export function App() {
   }
 
   async function handleExecuteSwap() {
-    if (!swapModalCell || !swapTargetDoctorId) return;
-    const { date, roleCode, giverDoctorId } = swapModalCell;
-    const giverDoctor = workspace.doctors.find(d => d.id === giverDoctorId);
-    const receiverDoctor = workspace.doctors.find(d => d.id === swapTargetDoctorId);
-    if (!giverDoctor || !receiverDoctor) return;
+    if (!swapModalCell) return;
+    const { date, roleCode, giverDoctorId, sourceDate, sourceRoleCode, targetDoctorId } = swapModalCell;
+    const targetKey = cellKey(date, roleCode);
+    const sourceKey = sourceDate && sourceRoleCode ? cellKey(sourceDate, sourceRoleCode) : targetKey;
+    const isDragDrop = sourceKey !== targetKey;
+    const targetBeforeDoctorId = schedule.assignments[targetKey]?.doctorId ?? null;
+    const sourceDoctor = workspace.doctors.find(d => d.id === giverDoctorId);
+    const selectedDoctor = swapTargetDoctorId ? workspace.doctors.find(d => d.id === swapTargetDoctorId) : null;
+    const targetBeforeDoctor = targetBeforeDoctorId ? workspace.doctors.find(d => d.id === targetBeforeDoctorId) ?? null : null;
+    const targetAfterDoctor = isDragDrop ? sourceDoctor ?? null : selectedDoctor ?? null;
+    if (!sourceDoctor || !targetAfterDoctor) return;
 
     const user = requireUser();
     const actorName = user.name || user.email;
-    const isDirect = role === "senior-planner" || (role === "senior" && giverDoctor.group === "senior");
+    const isDirect = role === "senior-planner" || (role === "senior" && sourceDoctor.group === "senior");
+    const changeCode = createChangeCode();
 
     if (isDirect) {
       setBusy(true);
@@ -1103,10 +1120,11 @@ export function App() {
           schedule,
           date,
           roleCode,
-          giverDoctor,
-          receiverDoctor,
+          targetBeforeDoctor,
+          targetAfterDoctor,
           swapReason,
-          actorName
+          actorName,
+          changeCode
         );
 
         let fileId = "";
@@ -1125,11 +1143,16 @@ export function App() {
 
         commitChange({
           mutator: (_draft, currentSchedule) => {
-            const cellKeyStr = cellKey(date, roleCode);
+            const cellKeyStr = targetKey;
             const before = {
-              assignment: currentSchedule.assignments[cellKeyStr] ?? null
+              assignment: currentSchedule.assignments[cellKeyStr] ?? null,
+              sourceAssignment: sourceKey !== cellKeyStr ? currentSchedule.assignments[sourceKey] ?? null : undefined,
+              changeCode
             };
-            currentSchedule.assignments[cellKeyStr] = { doctorId: swapTargetDoctorId, pending: false };
+            currentSchedule.assignments[cellKeyStr] = { doctorId: targetAfterDoctor.id, pending: false };
+            if (sourceKey !== cellKeyStr) {
+              currentSchedule.assignments[sourceKey] = targetDoctorId ? { doctorId: targetDoctorId, pending: false } : { doctorId: null, pending: false };
+            }
             currentSchedule.validation.stale = true;
 
             const auditEntryInput: AuditInput = {
@@ -1140,26 +1163,23 @@ export function App() {
               date,
               roleCode,
               before,
-              after: { assignment: currentSchedule.assignments[cellKeyStr] }
+              after: {
+                assignment: currentSchedule.assignments[cellKeyStr],
+                sourceAssignment: sourceKey !== cellKeyStr ? currentSchedule.assignments[sourceKey] : undefined,
+                changeCode
+              }
             };
 
             if (fileId) {
               (auditEntryInput as any).snapshotFileId = fileId;
               (auditEntryInput as any).snapshotUrl = fileUrl;
             }
+            (auditEntryInput as any).changeCode = changeCode;
 
             return auditEntryInput;
           },
-          note: `השינוי בוצע בהצלחה ותועד ביומן הפעולות${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+          note: `השינוי בוצע בהצלחה ותועד ביומן הפעולות. קוד שינוי: ${changeCode}${fileId ? " · תמונת גיבוי נשמרה ב-Drive" : ""}.`
         });
-
-        if (schedule.status === "published") {
-          try {
-            await mockCalendarSync();
-          } catch (syncErr) {
-            console.error("Calendar auto sync failed:", syncErr);
-          }
-        }
 
       } catch (err) {
         setMessage("שגיאה בביצוע ההחלפה: " + (err instanceof Error ? err.message : String(err)));
@@ -1177,10 +1197,10 @@ export function App() {
             requesterUser: user,
             date,
             roleCode,
-            proposedDoctorId: swapTargetDoctorId,
+            proposedDoctorId: targetAfterDoctor.id,
             reason: swapReason
           });
-          request.currentDoctorId = giverDoctorId;
+          request.currentDoctorId = targetBeforeDoctorId;
           _draft.changeRequests.unshift(request);
           return {
             action: "request-create-published-swap",
@@ -1190,7 +1210,7 @@ export function App() {
             date,
             roleCode,
             before: null,
-            after: request
+            after: { request, sourceAssignment: sourceKey !== targetKey ? currentSchedule.assignments[sourceKey] ?? null : undefined, changeCode }
           };
         },
         note: "בקשת החלפה נשלחה לאישור הצ'יף."
@@ -1214,6 +1234,7 @@ export function App() {
 
     setBusy(true);
     setMessage("מייצר קבלת שינוי ומעלה ל-Google Drive...");
+    const changeCode = createChangeCode();
 
     try {
       const imgDataUri = await generateSnapshotCard(
@@ -1224,7 +1245,8 @@ export function App() {
         giverDoctor,
         receiverDoctor,
         request.reason,
-        appUser?.name || appUser?.email || "צ'יף מתמחים"
+        appUser?.name || appUser?.email || "צ'יף מתמחים",
+        changeCode
       );
 
       let fileId = "";
@@ -1250,7 +1272,8 @@ export function App() {
           const cellKeyStr = cellKey(targetRequest.date, targetRequest.roleCode);
           const before = {
             request: { ...targetRequest },
-            assignment: targetSchedule.assignments[cellKeyStr] ?? null
+            assignment: targetSchedule.assignments[cellKeyStr] ?? null,
+            changeCode
           };
 
           targetSchedule.assignments[cellKeyStr] = { doctorId: targetRequest.proposedDoctorId, pending: false };
@@ -1270,24 +1293,19 @@ export function App() {
             date: targetRequest.date,
             roleCode: targetRequest.roleCode,
             before,
-            after: { request: targetRequest, assignment: targetSchedule.assignments[cellKeyStr] }
+            after: { request: targetRequest, assignment: targetSchedule.assignments[cellKeyStr], changeCode }
           };
 
           if (fileId) {
             (auditEntryInput as any).snapshotFileId = fileId;
             (auditEntryInput as any).snapshotUrl = fileUrl;
           }
+          (auditEntryInput as any).changeCode = changeCode;
 
           return auditEntryInput;
         },
-        note: `הבקשה אושרה והוחלה על השיבוץ${fileId ? " עם תמונת גיבוי ב-Drive" : ""}.`
+        note: `הבקשה אושרה והוחלה על השיבוץ. קוד שינוי: ${changeCode}${fileId ? " · תמונת גיבוי נשמרה ב-Drive" : ""}.`
       });
-
-      try {
-        await mockCalendarSync();
-      } catch (syncErr) {
-        console.error("Calendar auto sync failed:", syncErr);
-      }
 
     } catch (err) {
       setMessage("שגיאה באישור הבקשה: " + (err instanceof Error ? err.message : String(err)));
@@ -1462,9 +1480,10 @@ export function App() {
                 role={role}
                 appUser={appUser}
                 changeRequests={workspace.changeRequests}
-                onSwapCellClick={(date, roleCode, giverDoctorId, targetDoctorId) => {
-                  setSwapModalCell({ date, roleCode, giverDoctorId, targetDoctorId });
-                  if (targetDoctorId) setSwapTargetDoctorId(targetDoctorId);
+                onSwapCellClick={(date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode) => {
+                  setSwapModalCell({ date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode });
+                  if (sourceDate && sourceRoleCode) setSwapTargetDoctorId(giverDoctorId);
+                  else if (targetDoctorId) setSwapTargetDoctorId(targetDoctorId);
                   else setSwapTargetDoctorId("");
                 }}
                 onApproveRequest={handleApproveRequest}
@@ -1502,7 +1521,7 @@ export function App() {
               schedule={schedule}
               exclusions={visibleExclusions}
               doctors={workspace.doctors}
-              roles={workspace.roles}
+              roles={exclusionRoles}
               days={days}
               form={{ ...exclusionForm, doctorId: canUsePlannerTools(role) ? exclusionForm.doctorId : ownDoctorId }}
               roleCodes={exclusionRoleCodes}
@@ -1603,6 +1622,8 @@ export function App() {
                   const roleName = workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name ?? "";
                   const dateStr = swapModalCell.date.split("-").reverse().join("/");
                   const targetDoc = swapTargetDoctorId ? workspace.doctors.find(d => d.id === swapTargetDoctorId) : null;
+                  const originalTargetDoc = swapModalCell.targetDoctorId ? workspace.doctors.find(d => d.id === swapModalCell.targetDoctorId) : null;
+                  const isDragDrop = Boolean(swapModalCell.sourceDate && swapModalCell.sourceRoleCode);
                   const isDirect = role === "senior-planner" || (role === "senior" && giverDoc?.group === "senior");
                   return (
                     <>
@@ -1612,9 +1633,14 @@ export function App() {
                           <span style={{ color: "var(--muted)", marginRight: "12px" }}>תאריך: </span><strong>{dateStr}</strong>
                         </div>
                         <div>
-                          <span style={{ color: "var(--muted)" }}>מעביר: </span>
+                          <span style={{ color: "var(--muted)" }}>{isDragDrop ? "נגרר: " : "מעביר: "}</span>
                           <strong style={{ color: "#b91c1c" }}>ד"ר {giverDoc?.name ?? "?"}</strong>
-                          {targetDoc && (
+                          {isDragDrop ? (
+                            <>
+                              <span style={{ margin: "0 8px", color: "var(--muted)" }}>→ לתא היעד</span>
+                              {originalTargetDoc ? <strong style={{ color: "#16a34a" }}> (מחליף את ד"ר {originalTargetDoc.name})</strong> : null}
+                            </>
+                          ) : targetDoc && (
                             <>
                               <span style={{ margin: "0 8px", color: "var(--muted)" }}>→ מחליף:</span>
                               <strong style={{ color: "#16a34a" }}>ד"ר {targetDoc.name}</strong>
@@ -1626,7 +1652,7 @@ export function App() {
                         </div>
                       </div>
 
-                      <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px", fontWeight: "bold" }}>
+                      {!isDragDrop ? <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px", fontWeight: "bold" }}>
                         {swapTargetDoctorId ? "רופא מחליף (ניתן לשינוי)" : "בחר רופא מחליף"}
                         <select
                           value={swapTargetDoctorId}
@@ -1659,7 +1685,11 @@ export function App() {
                             );
                           })()}
                         </select>
-                      </label>
+                      </label> : (
+                        <div className="notice" style={{ marginBottom: "12px", fontSize: "13px" }}>
+                          גרירה תשנה את תא היעד לד"ר {giverDoc?.name ?? ""}{originalTargetDoc ? ` ותחזיר את ד"ר ${originalTargetDoc.name} לתא המקור.` : " ותפנה את תא המקור."}
+                        </div>
+                      )}
 
                       <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px", fontWeight: "bold" }}>
                         סיבה לשינוי
@@ -1675,7 +1705,7 @@ export function App() {
                         <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
                         <button
                           className="primary"
-                          disabled={!swapTargetDoctorId}
+                          disabled={!isDragDrop && !swapTargetDoctorId}
                           onClick={handleExecuteSwap}
                         >
                           {isDirect ? "בצע החלפה מיידית" : "שלח בקשה לאישור"}
@@ -1720,11 +1750,43 @@ function InfoCell({ label, value, tone }: { label: string; value: string; tone?:
   return <div className={`info-cell ${tone ?? ""}`}><span>{label}</span><b>{value}</b></div>;
 }
 
+function createChangeCode() {
+  const timePart = Date.now().toString(36).slice(-5).toUpperCase();
+  const randomPart = Math.random().toString(36).slice(2, 5).toUpperCase();
+  return `SWP-${timePart}-${randomPart}`;
+}
+
+function linkedAssignmentKeys(date: string, roleCode: RoleCode) {
+  const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+  if ((roleCode === ROLE_CODES.SENIOR_A || roleCode === ROLE_CODES.FRIDAY_MORNING_SENIOR) && weekday === 5) {
+    return [
+      cellKey(date, ROLE_CODES.SENIOR_A),
+      cellKey(date, ROLE_CODES.FRIDAY_MORNING_SENIOR),
+      cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR)
+    ];
+  }
+  if (roleCode === ROLE_CODES.HALF_SENIOR && weekday === 6) {
+    const friday = previousDayKey(date);
+    return [
+      cellKey(friday, ROLE_CODES.SENIOR_A),
+      cellKey(friday, ROLE_CODES.FRIDAY_MORNING_SENIOR),
+      cellKey(date, ROLE_CODES.HALF_SENIOR)
+    ];
+  }
+  return [cellKey(date, roleCode)];
+}
+
+function isDoctorExcluded(exclusionsSet: Set<string>, date: string, roleCode: RoleCode, doctorId: string) {
+  return exclusionsSet.has(`${date}|*|${doctorId}`) ||
+    exclusionRoleCodesForAssignment(roleCode).some((candidate) => exclusionsSet.has(`${date}|${candidate}|${doctorId}`));
+}
+
 function isDoctorBlockedForAssignment(schedule: MonthSchedule, doctorId: string, date: string, roleCode: RoleCode) {
+  const roleCodes = new Set(exclusionRoleCodesForAssignment(roleCode));
   return schedule.exclusions.some((exclusion) =>
     exclusion.doctorId === doctorId &&
     exclusion.date === date &&
-    (exclusion.roleCode === roleCode || exclusion.roleCode === null)
+    (exclusion.roleCode === null || roleCodes.has(exclusion.roleCode))
   );
 }
 
@@ -2028,7 +2090,7 @@ function PublishedRoster({
   role: AppRole;
   appUser: AppUser | null;
   changeRequests: ChangeRequest[];
-  onSwapCellClick: (date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string) => void;
+  onSwapCellClick: (date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
   onApproveRequest: (id: string, reason: string) => Promise<void>;
   onRejectRequest: (id: string) => void;
 }) {
@@ -2056,9 +2118,14 @@ function PublishedRoster({
     if (!dragSource) return false;
     const sourceDoc = doctors.find(d => d.id === dragSource.doctorId);
     const targetRole = roles.find(r => r.code === targetRoleCode);
+    const sourceRole = roles.find(r => r.code === dragSource.roleCode);
+    const targetAssignment = schedule.assignments[cellKey(targetDate, targetRoleCode)];
+    const targetDoc = targetAssignment?.doctorId ? doctors.find(d => d.id === targetAssignment.doctorId) : null;
     if (!sourceDoc || !targetRole) return false;
     if (targetDate === dragSource.date && targetRoleCode === dragSource.roleCode) return false;
-    return isDoctorEligibleForRole(sourceDoc, targetRole);
+    if (!isDoctorEligibleForRole(sourceDoc, targetRole)) return false;
+    if (targetDoc && sourceRole && !isDoctorEligibleForRole(targetDoc, sourceRole)) return false;
+    return true;
   }
 
   function canClickCell(assignment: Assignment): boolean {
@@ -2175,7 +2242,7 @@ function PublishedRoster({
                         if (!dragSource || !droppable) return;
                         const targetAssignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
                         const targetDoctorId = targetAssignment.doctorId ?? undefined;
-                        onSwapCellClick(day.key, roleItem.code, dragSource.doctorId, targetDoctorId);
+                        onSwapCellClick(day.key, roleItem.code, dragSource.doctorId, targetDoctorId, dragSource.date, dragSource.roleCode);
                         setDragSource(null);
                       }}
                     >
@@ -2413,10 +2480,11 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
       <div className="list audit-list schedule-audit">
         {visible.length === 0 ? <div className="list-row">אין עדיין שינויי שיבוץ אחרי פרסום.</div> : null}
         {visible.map((entry) => {
-          const before = entry.before as { assignment?: Assignment | null; request?: ChangeRequest } | null;
-          const after = entry.after as { assignment?: Assignment | null; request?: ChangeRequest } | null;
+          const before = entry.before as { assignment?: Assignment | null; request?: ChangeRequest; changeCode?: string } | null;
+          const after = entry.after as { assignment?: Assignment | null; request?: ChangeRequest; changeCode?: string } | null;
           const fromId = before?.assignment?.doctorId ?? before?.request?.currentDoctorId ?? null;
           const toId = after?.assignment?.doctorId ?? after?.request?.proposedDoctorId ?? after?.request?.requesterDoctorId ?? null;
+          const changeCode = entry.changeCode ?? after?.changeCode ?? before?.changeCode ?? null;
           return (
             <div className="list-row audit-change" key={entry.id}>
               <span>
@@ -2425,6 +2493,7 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
               </span>
               <span>
                 <b>{entry.date ?? ""} · {entry.roleCode ? roleByCode.get(entry.roleCode) ?? entry.roleCode : ""}</b>
+                {changeCode ? <small>קוד שינוי: <strong>{changeCode}</strong></small> : null}
                 <small>{doctorById.get(fromId ?? "") ?? "לא שובץ"} ← {doctorById.get(toId ?? "") ?? "לא שובץ"}</small>
                 {entry.snapshotUrl && (
                   <small style={{ marginTop: "4px" }}>

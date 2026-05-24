@@ -147,6 +147,7 @@ export type AuditEntry = {
   driveModifiedTime?: string | null;
   snapshotFileId?: string;
   snapshotUrl?: string;
+  changeCode?: string;
 };
 
 export type MonthSchedule = {

@@ -1,4 +1,4 @@
-import { cellKey, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
+import { cellKey, exclusionRoleCodesForAssignment, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
 import { nextDayKey, previousDayKey } from "@/month";
 import type { Doctor, MonthSchedule, Role, ValidationIssue } from "@/types";
 
@@ -42,7 +42,9 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
       issues.push(issue(`${doctor.name} לא מתאים/ה לתפקיד ${role.name}.`, "error", date, role.code));
     }
 
-    if (exclusionKeys.has(`${date}|*|${doctor.id}`) || exclusionKeys.has(`${date}|${role.code}|${doctor.id}`)) {
+    const isExcluded = exclusionKeys.has(`${date}|*|${doctor.id}`) ||
+      exclusionRoleCodesForAssignment(role.code).some((candidate) => exclusionKeys.has(`${date}|${candidate}|${doctor.id}`));
+    if (isExcluded) {
       issues.push(issue(`${doctor.name} חסום/ה בתאריך הזה עבור ${role.name}.`, "error", date, role.code));
     }
 
@@ -55,7 +57,13 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         if (items[i].doctor.id !== items[j].doctor.id) continue;
-        issues.push(issue(`${items[i].doctor.name} מופיע/ה פעמיים באותו יום.`, "error", date, items[j].role.code));
+        const roles = new Set([items[i].role.code, items[j].role.code]);
+        const allowedFridaySeniorLink = new Date(`${date}T00:00:00.000Z`).getUTCDay() === 5 &&
+          roles.has(ROLE_CODES.SENIOR_A) &&
+          roles.has(ROLE_CODES.FRIDAY_MORNING_SENIOR);
+        if (!allowedFridaySeniorLink) {
+          issues.push(issue(`${items[i].doctor.name} מופיע/ה פעמיים באותו יום.`, "error", date, items[j].role.code));
+        }
       }
     }
   });
@@ -88,7 +96,11 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     if (weekday !== 5) return;
 
     const saturdayHalf = schedule.assignments[cellKey(nextDayKey(date), ROLE_CODES.HALF_SENIOR)];
+    const fridayMorningSenior = schedule.assignments[cellKey(date, ROLE_CODES.FRIDAY_MORNING_SENIOR)];
     const doctor = doctorById.get(assignment.doctorId);
+    if (fridayMorningSenior?.doctorId && fridayMorningSenior.doctorId !== assignment.doctorId) {
+      issues.push(issue("כונן ביום שישי ושישי בוקר מומחה חייבים להיות אותו מומחה.", "error", date, ROLE_CODES.FRIDAY_MORNING_SENIOR));
+    }
     if (saturdayHalf?.doctorId && saturdayHalf.doctorId !== assignment.doctorId) {
       issues.push(issue("כונן ביום שישי ושבת חצי מומחה חייבים להיות אותו מומחה.", "error", nextDayKey(date), ROLE_CODES.HALF_SENIOR));
     }
