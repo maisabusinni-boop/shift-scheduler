@@ -91,6 +91,28 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     if (!assignment.doctorId || assignment.pending) return;
     const [date, roleCodeRaw] = key.split("|");
     const roleCode = roleCodeRaw as Role["code"];
+    if (roleCode !== ROLE_CODES.RESIDENT_ON_CALL) return;
+    const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+    if (weekday !== 5) return;
+
+    const sunday = nextDayKey(nextDayKey(date));
+    const doctor = doctorById.get(assignment.doctorId);
+    if (!doctor) return;
+    const sundayEntry = Object.entries(schedule.assignments).find(([candidateKey, candidateAssignment]) => {
+      if (candidateAssignment.pending || candidateAssignment.doctorId !== assignment.doctorId) return false;
+      const [candidateDate] = candidateKey.split("|");
+      return candidateDate === sunday;
+    });
+    if (!sundayEntry) return;
+    const [, sundayRoleCodeRaw] = sundayEntry[0].split("|");
+    const sundayRoleCode = sundayRoleCodeRaw as Role["code"];
+    issues.push(issue(`${doctor.name} שובץ/ה כתורן/ית ביום שישי וגם ביום ראשון; לרוב יום ראשון אמור להיות יום חופש.`, "warning", sunday, sundayRoleCode));
+  });
+
+  Object.entries(schedule.assignments).forEach(([key, assignment]) => {
+    if (!assignment.doctorId || assignment.pending) return;
+    const [date, roleCodeRaw] = key.split("|");
+    const roleCode = roleCodeRaw as Role["code"];
     if (roleCode !== ROLE_CODES.SENIOR_A) return;
     const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
     if (weekday !== 5) return;

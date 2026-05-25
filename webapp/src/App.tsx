@@ -80,14 +80,13 @@ import type {
 import { validateSchedule } from "@/validation";
 import "./styles.css";
 
-type TabId = "published-roster" | "roster" | "exclusions" | "requests" | "doctors" | "audit" | "drive" | "calendar" | "settings";
+type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
   { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
   { id: "roster", label: "טיוטת סידור", icon: Table2, draftPlanner: true },
   { id: "exclusions", label: "אילוצים", icon: FileWarning },
-  { id: "requests", label: "שינוי תורנות", icon: UserCheck },
   { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
   { id: "audit", label: "יומן פעולות", icon: History, audit: true },
   { id: "drive", label: "חיבור שרת", icon: Cloud, plannerOnly: true },
@@ -992,7 +991,7 @@ export function App() {
 
             return auditEntryInput;
           },
-          note: `${mode === "exchange" ? "ההחלפה" : "המסירה"} בוצעה בהצלחה ותועדה ביומן הפעולות. קוד שינוי: ${changeCode}.`
+          note: `${mode === "exchange" ? "ההחלפה" : "המסירה"} בוצעה בהצלחה ותועדה ביומן הפעולות.`
         });
 
       } catch (err) {
@@ -1040,7 +1039,7 @@ export function App() {
             changeDetails: details
           };
         },
-        note: `${mode === "exchange" ? "בקשת החלפה" : "בקשת מסירה"} נשלחה לאישור הצ'יף. קוד שינוי: ${changeCode}.`
+        note: `${mode === "exchange" ? "בקשת החלפה" : "בקשת מסירה"} נשלחה לאישור הצ'יף.`
       });
       setSwapModalCell(null);
       setSwapTargetDoctorId("");
@@ -1136,7 +1135,7 @@ export function App() {
 
           return auditEntryInput;
         },
-        note: `הבקשה אושרה והוחלה על השיבוץ. קוד שינוי: ${changeCode}.`
+        note: "הבקשה אושרה והוחלה על השיבוץ."
       });
 
     } catch (err) {
@@ -1183,7 +1182,12 @@ export function App() {
 
   const canViewActiveSchedule = canSeeSchedule(role, schedule);
   const ownDoctorId = appUser?.doctorId ?? "";
-  const visibleExclusions = canUsePlannerTools(role) ? schedule.exclusions : schedule.exclusions.filter((item) => item.doctorId === ownDoctorId);
+  const visibleExclusions = useMemo(() => {
+    if (canUsePlannerTools(role)) return schedule.exclusions;
+    if (!sessionDoctor) return schedule.exclusions.filter((item) => item.doctorId === ownDoctorId);
+    const visibleDoctorIds = new Set(workspace.doctors.filter((doctor) => doctor.group === sessionDoctor.group).map((doctor) => doctor.id));
+    return schedule.exclusions.filter((item) => visibleDoctorIds.has(item.doctorId));
+  }, [ownDoctorId, role, schedule.exclusions, sessionDoctor, workspace.doctors]);
 
   if (!currentUser) {
     return (
@@ -1272,7 +1276,7 @@ export function App() {
         <div className="month-controls">
           <input type="number" value={month} min={1} max={12} onChange={(event) => setMonth(Number(event.target.value))} />
           <input type="number" value={year} min={2020} max={2100} onChange={(event) => setYear(Number(event.target.value))} />
-          <span className={`status ${schedule.status}`}>{schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
+          <span className={`status ${schedule.status}`}>{schedule.status === "published" ? "נעול" : "טיוטה"}</span>
         </div>
       </header>
 
@@ -1313,12 +1317,9 @@ export function App() {
                 appUser={appUser}
                 changeRequests={workspace.changeRequests}
                 onSwapCellClick={(mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode) => {
-                  if (mode === "exchange") {
-                    void handleExecuteSwap({ mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode }, "");
-                    return;
-                  }
                   setSwapModalCell({ mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode });
-                  if (sourceDate && sourceRoleCode) setSwapTargetDoctorId(giverDoctorId);
+                  if (mode === "exchange") setSwapTargetDoctorId(giverDoctorId);
+                  else if (sourceDate && sourceRoleCode) setSwapTargetDoctorId(giverDoctorId);
                   else if (targetDoctorId) setSwapTargetDoctorId(targetDoctorId);
                   else setSwapTargetDoctorId("");
                 }}
@@ -1368,23 +1369,6 @@ export function App() {
               setSelectedDates={setSelectedDates}
               addExclusions={addExclusions}
               deleteExclusion={deleteExclusion}
-            />
-          )}
-          {tab === "requests" && (
-            <RequestsPanel
-              data={workspace}
-              schedule={schedule}
-              doctors={workspace.doctors}
-              roles={workspace.roles}
-              appUser={appUser}
-              canReview={canReviewRequests(role)}
-              canApply={(request) => canApplyRequest(role, request)}
-              form={requestForm}
-              setForm={setRequestForm}
-              submitRequest={submitRequest}
-              approve={(id) => decideRequest(id, "approve")}
-              reject={(id) => decideRequest(id, "reject")}
-              applyRequest={applyRequest}
             />
           )}
           {tab === "doctors" && (
@@ -1452,13 +1436,56 @@ export function App() {
               alignItems: "center", justifyContent: "center", zIndex: 1000
             }}>
               <div className="panel" style={{ width: "480px", padding: "24px", direction: "rtl" }}>
-                <h3 style={{ marginTop: 0 }}>מסירת תורנות</h3>
+                <h3 style={{ marginTop: 0 }}>{swapModalCell.mode === "exchange" ? "אישור החלפה" : "מסירת תורנות"}</h3>
                 {(() => {
                   const giverDoc = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
                   const roleName = workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name ?? "";
                   const dateStr = swapModalCell.date.split("-").reverse().join("/");
                   const targetDoc = swapTargetDoctorId ? workspace.doctors.find(d => d.id === swapTargetDoctorId) : null;
                   const isDirect = role === "senior-planner" || (role === "senior" && giverDoc?.group === "senior");
+                  const isExchange = swapModalCell.mode === "exchange";
+                  const sourceDate = swapModalCell.sourceDate ?? swapModalCell.date;
+                  const sourceRoleCode = swapModalCell.sourceRoleCode ?? swapModalCell.roleCode;
+                  const sourceRoleName = workspace.roles.find(r => r.code === sourceRoleCode)?.name ?? "";
+                  const sourceDateStr = sourceDate.split("-").reverse().join("/");
+                  const exchangeTargetDoc = swapModalCell.targetDoctorId ? workspace.doctors.find(d => d.id === swapModalCell.targetDoctorId) : null;
+                  if (isExchange) {
+                    return (
+                      <>
+                        <div className="exchange-confirm-card">
+                          <div className="exchange-confirm-person">
+                            <b>ד"ר {giverDoc?.name ?? "?"}</b>
+                            <small>{sourceDateStr}</small>
+                            <small>{sourceRoleName}</small>
+                          </div>
+                          <div className="exchange-confirm-arrow">⇄</div>
+                          <div className="exchange-confirm-person">
+                            <b>ד"ר {exchangeTargetDoc?.name ?? "?"}</b>
+                            <small>{dateStr}</small>
+                            <small>{roleName}</small>
+                          </div>
+                        </div>
+                        <div style={{ background: "#f8fafc", border: "1px solid var(--line)", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", fontSize: "13px", color: "var(--muted)" }}>
+                          {isDirect ? "השינוי יוחל מיד ויירשם ביומן הפעולות." : "הבקשה תישלח לאישור לפי ההרשאות הקיימות."}
+                        </div>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px", fontWeight: "bold" }}>
+                          סיבה לשינוי
+                          <input
+                            value={swapReason}
+                            onChange={(e) => setSwapReason(e.target.value)}
+                            placeholder="הקלד סיבה להחלפה..."
+                            style={{ width: "100%" }}
+                          />
+                        </label>
+                        <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                          <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
+                          <button className="primary" onClick={() => handleExecuteSwap()}>
+                            {isDirect ? "אשר והחלף" : "שלח בקשה לאישור"}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  }
                   return (
                     <>
                       <div style={{ background: "#f8fafc", border: "1px solid var(--line)", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px", fontSize: "14px" }}>
@@ -1619,6 +1646,10 @@ function formatDoctorOption(doctor: Doctor) {
   return `${doctor.group === "resident" ? "מתמחה · " : "בכיר · "}${doctor.name}${doctor.canAngio ? " · אנגיו" : ""}`;
 }
 
+function formatScheduleMonth(schedule: MonthSchedule) {
+  return `${String(schedule.month).padStart(2, "0")}/${schedule.year}`;
+}
+
 function Roster({
   schedule,
   roles,
@@ -1656,17 +1687,21 @@ function Roster({
       <div className="toolbar roster-toolbar">
         <div>
           <h2>שיבוץ חודשי</h2>
-          <span>{editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? "פורסם" : "טיוטה"}</span>
+          <span>{formatScheduleMonth(schedule)} · {editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? <b className="locked-status">נעול</b> : "טיוטה"}</span>
         </div>
         <div className="actions">
-          {editable && (
+          {canUsePlannerTools(role) && editable && (
             <button onClick={autoSchedule} style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af" }}>
               שיבוץ אוטומטי
             </button>
           )}
           <button onClick={validateCurrent} disabled={!canEditDraftRoster(role)}>בדוק</button>
-          <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>פרסם</button>
-          <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>החזר לטיוטה</button>
+          {canUsePlannerTools(role) ? (
+            <>
+              <button className="primary" onClick={publishCurrent} disabled={!canPublish(role)}>פרסם</button>
+              <button onClick={unpublishCurrent} disabled={!canPublish(role) || schedule.status === "draft"}>החזר לטיוטה</button>
+            </>
+          ) : null}
         </div>
       </div>
       <div className="roster-summary">
@@ -1726,6 +1761,7 @@ function Roster({
 }
 
 function Exclusions({
+  schedule,
   exclusions,
   doctors,
   roles,
@@ -1760,10 +1796,28 @@ function Exclusions({
     String(a.roleCode ?? "").localeCompare(String(b.roleCode ?? "")) ||
     a.doctorId.localeCompare(b.doctorId)
   );
+  const groupedExclusions = Array.from(
+    sortedExclusions.reduce((groups, exclusion) => {
+      const group = groups.get(exclusion.doctorId) ?? [];
+      group.push(exclusion);
+      groups.set(exclusion.doctorId, group);
+      return groups;
+    }, new Map<string, typeof sortedExclusions>())
+  ).sort(([doctorIdA], [doctorIdB]) => {
+    const doctorA = doctors.find((doctor) => doctor.id === doctorIdA)?.name ?? "";
+    const doctorB = doctors.find((doctor) => doctor.id === doctorIdB)?.name ?? "";
+    return doctorA.localeCompare(doctorB, "he");
+  });
 
   return (
     <section className="panel exclusions-panel">
-      <div className="toolbar"><h2>אילוצים</h2><button className="primary" onClick={addExclusions}><Plus size={17} />הוסף חסימה</button></div>
+      <div className="toolbar">
+        <div>
+          <h2>אילוצים</h2>
+          <span className="section-date">{formatScheduleMonth(schedule)}</span>
+        </div>
+        <button className="primary" onClick={addExclusions}><Plus size={17} />הוסף חסימה</button>
+      </div>
       <div className="form-row">
         {canChooseDoctor ? (
           <select value={form.doctorId} onChange={(event) => setForm({ ...form, doctorId: event.target.value })}>
@@ -1794,20 +1848,33 @@ function Exclusions({
         <div className="toolbar compact"><h2>אילוצים שנוספו</h2><span>{sortedExclusions.length} רשומות</span></div>
         <div className="exclusion-card-list">
           {sortedExclusions.length === 0 ? <div className="list-row">אין עדיין אילוצים בחודש הזה.</div> : null}
-          {sortedExclusions.map((exclusion) => {
-          const doctor = doctors.find((candidate) => candidate.id === exclusion.doctorId);
-          const role = roles.find((candidate) => candidate.code === exclusion.roleCode);
-          return (
-            <article className="exclusion-card" key={exclusion.id}>
-              <div>
-                <b>{doctor?.name ?? "רופא לא ידוע"}</b>
-                <span>{exclusion.date} · {role?.name ?? "כל התפקידים"}</span>
-                {exclusion.reason ? <small>{exclusion.reason}</small> : null}
-              </div>
-              <button className="danger" onClick={() => deleteExclusion(exclusion.id)}><Trash2 size={16} />מחק</button>
-            </article>
-          );
-        })}
+          {groupedExclusions.map(([doctorId, doctorExclusions]) => {
+            const doctor = doctors.find((candidate) => candidate.id === doctorId);
+            return (
+              <article className="exclusion-card grouped" key={doctorId}>
+                <div className="exclusion-card-header">
+                  <span>
+                    <b>{doctor?.name ?? "רופא לא ידוע"}</b>
+                    <small>{doctor?.group === "senior" ? "בכיר" : "מתמחה"} · {doctorExclusions.length} אילוצים</small>
+                  </span>
+                </div>
+                <div className="exclusion-chip-list">
+                  {doctorExclusions.map((exclusion) => {
+                    const role = roles.find((candidate) => candidate.code === exclusion.roleCode);
+                    return (
+                      <span className="exclusion-chip" key={exclusion.id}>
+                        <span>
+                          <b>{exclusion.date}</b>
+                          <small>{role?.name ?? "כל התפקידים"}{exclusion.reason ? ` · ${exclusion.reason}` : ""}</small>
+                        </span>
+                        <button className="danger icon-button" aria-label="מחק אילוץ" onClick={() => deleteExclusion(exclusion.id)}><Trash2 size={14} /></button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -1998,7 +2065,7 @@ function PublishedRoster({
       <div className="toolbar roster-toolbar">
         <div>
           <h2>לוח תורנויות מפורסם</h2>
-          <span>{schedule.status === "published" ? "מצב צפייה פעיל" : "טיוטה (קריאה בלבד)"}</span>
+          <span>{formatScheduleMonth(schedule)} · {schedule.status === "published" ? "מצב צפייה פעיל" : "טיוטה (קריאה בלבד)"}</span>
         </div>
         <div className="actions">
           {schedule.status === "published" && (
@@ -2415,7 +2482,7 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
             <article className="audit-change-card" key={entry.id}>
               <header className="audit-change-header">
                 <div>
-                  <b>{details.kind === "exchange" ? "החלפה" : "מסירה"} · {details.code || "ללא קוד"}</b>
+                  <b>{details.kind === "exchange" ? "החלפה" : "מסירה"}</b>
                   <small>{statusLabel}</small>
                 </div>
                 <div>

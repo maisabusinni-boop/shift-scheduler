@@ -67,4 +67,12 @@ describe("validateSchedule", () => {
     const issues = validateSchedule(schedule, roles, doctors);
     expect(issues.some((issue) => issue.severity === "error" && issue.message.includes("פעמיים"))).toBe(true);
   });
+
+  it("warns when a Friday resident on-call is also assigned on Sunday", () => {
+    const schedule = createEmptySchedule(2026, 5);
+    schedule.assignments[cellKey("2026-05-01", ROLE_CODES.RESIDENT_ON_CALL)] = { doctorId: "resident", pending: false };
+    schedule.assignments[cellKey("2026-05-03", ROLE_CODES.HALF_RESIDENT)] = { doctorId: "resident", pending: false };
+    const issues = validateSchedule(schedule, roles, doctors);
+    expect(issues.some((issue) => issue.severity === "warning" && issue.message.includes("יום ראשון"))).toBe(true);
+  });
 });
