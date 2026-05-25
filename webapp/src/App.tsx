@@ -1445,7 +1445,7 @@ export function App() {
 
       {role ? (
         <>
-          <nav className="tabs">
+          <nav className="tabs mobile-bottom-tabs">
             {visibleTabs.map((item) => {
               const Icon = item.icon;
               return (
@@ -1582,12 +1582,8 @@ export function App() {
           )}
 
           {swapModalCell && (
-            <div className="modal-overlay" style={{
-              position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-              background: "rgba(0, 0, 0, 0.4)", display: "flex",
-              alignItems: "center", justifyContent: "center", zIndex: 1000
-            }}>
-              <div className="panel" style={{ width: "480px", padding: "24px", direction: "rtl" }}>
+            <div className="modal-overlay">
+              <div className="panel modal-panel mobile-modal-panel">
                 <h3 style={{ marginTop: 0 }}>{swapModalCell.mode === "exchange" ? "אישור החלפה" : "מסירת תורנות"}</h3>
                 {(() => {
                   const giverDoc = workspace.doctors.find(d => d.id === swapModalCell.giverDoctorId);
@@ -1629,7 +1625,7 @@ export function App() {
                             style={{ width: "100%" }}
                           />
                         </label>
-                        <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                        <div className="modal-actions">
                           <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
                           <button className="primary" onClick={() => handleExecuteSwap()}>
                             {isDirect ? "אשר והחלף" : "שלח בקשה לאישור"}
@@ -1705,7 +1701,7 @@ export function App() {
                         />
                       </label>
 
-                      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                      <div className="modal-actions">
                         <button onClick={() => { setSwapModalCell(null); setSwapTargetDoctorId(""); setSwapReason(""); }}>ביטול</button>
                         <button
                           className="primary"
@@ -1820,6 +1816,80 @@ function formatScheduleMonth(schedule: MonthSchedule) {
   return `${String(schedule.month).padStart(2, "0")}/${schedule.year}`;
 }
 
+function formatShortDate(date: string) {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function MobileRosterDayCards({
+  schedule,
+  roles,
+  doctors,
+  days,
+  issueByCell,
+  focusCell,
+  editable,
+  updateAssignment
+}: {
+  schedule: MonthSchedule;
+  roles: Role[];
+  doctors: Doctor[];
+  days: ReturnType<typeof buildMonthDays>;
+  issueByCell: Map<string | undefined, string>;
+  focusCell: string | null;
+  editable: boolean;
+  updateAssignment: (date: string, roleCode: RoleCode, value: string) => void;
+}) {
+  return (
+    <div className="mobile-roster-list">
+      {days.map((day) => (
+        <article className="mobile-roster-card" key={day.key}>
+          <header className="mobile-roster-card-header">
+            <strong>{day.day}</strong>
+            <span>{day.weekdayLabel}</span>
+            <small>{formatShortDate(day.key)}</small>
+          </header>
+          <div className="mobile-roster-rows">
+            {roles.map((roleItem) => {
+              const key = cellKey(day.key, roleItem.code);
+              const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
+              const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+              const issue = issueByCell.get(key);
+              const options = doctors.filter((doctor) => isDoctorEligibleForRole(doctor, roleItem)).sort(doctorSortForRole(roleItem));
+              const availableOptions = options.filter((doctor) => !isDoctorBlockedForAssignment(schedule, doctor.id, day.key, roleItem.code));
+              const blockedOptions = options.filter((doctor) => isDoctorBlockedForAssignment(schedule, doctor.id, day.key, roleItem.code));
+              return (
+                <div className={`mobile-roster-row ${disabled ? "disabled" : ""} ${issue ?? ""} ${focusCell === key ? "focused" : ""}`} key={roleItem.code}>
+                  <div className="mobile-roster-row-meta">
+                    <span className="role-title">
+                      <i style={{ background: roleItem.color }} />
+                      {roleItem.name}
+                    </span>
+                    {disabled ? <small>לא פעיל ביום זה</small> : null}
+                  </div>
+                  <div className="mobile-roster-row-action">
+                    {disabled ? (
+                      <span className="blocked-cell">לא פעיל</span>
+                    ) : (
+                      <select disabled={!editable} value={assignment.pending ? "__pending" : assignment.doctorId ?? ""} onChange={(event) => updateAssignment(day.key, roleItem.code, event.target.value)}>
+                        <option value="">לא שובץ</option>
+                        <option value="__pending">ממתין</option>
+                        {availableOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
+                        {blockedOptions.length ? <option disabled>━━ אילוצים ━━</option> : null}
+                        {blockedOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function Roster({
   schedule,
   roles,
@@ -1892,7 +1962,7 @@ function Roster({
           {schedule.validation.issues.length > 6 ? <span className="hint">+{schedule.validation.issues.length - 6} נוספות</span> : null}
         </div>
       ) : null}
-      <div className="board-wrap">
+      <div className="board-wrap desktop-roster-table">
         <table className="roster-table">
           <thead><tr><th className="sticky-date">תאריך</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
           <tbody>
@@ -1926,6 +1996,16 @@ function Roster({
           </tbody>
         </table>
       </div>
+      <MobileRosterDayCards
+        schedule={schedule}
+        roles={roles}
+        doctors={doctors}
+        days={days}
+        issueByCell={issueByCell}
+        focusCell={focusCell}
+        editable={editable}
+        updateAssignment={updateAssignment}
+      />
     </section>
   );
 }
@@ -2133,6 +2213,101 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
   return labels[status];
 }
 
+function MobilePublishedRosterDayCards({
+  schedule,
+  roles,
+  doctors,
+  days,
+  changeMode,
+  selectedExchangeCell,
+  canUseCell,
+  canExchangeCells,
+  onSwapCellClick,
+  setSelectedExchangeCell,
+  setExchangeMessage
+}: {
+  schedule: MonthSchedule;
+  roles: Role[];
+  doctors: Doctor[];
+  days: ReturnType<typeof buildMonthDays>;
+  changeMode: PublishedChangeMode | null;
+  selectedExchangeCell: { date: string; roleCode: RoleCode; doctorId: string } | null;
+  canUseCell: (assignment: Assignment) => boolean;
+  canExchangeCells: (source: { date: string; roleCode: RoleCode; doctorId: string }, targetDate: string, targetRoleCode: RoleCode) => boolean;
+  onSwapCellClick: (mode: PublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
+  setSelectedExchangeCell: (cell: { date: string; roleCode: RoleCode; doctorId: string } | null) => void;
+  setExchangeMessage: (message: string) => void;
+}) {
+  function handleCellTap(date: string, roleCode: RoleCode, assignment: Assignment) {
+    if (!changeMode || !assignment.doctorId || !canUseCell(assignment)) return;
+    if (changeMode === "handoff") {
+      onSwapCellClick("handoff", date, roleCode, assignment.doctorId);
+      return;
+    }
+    if (!selectedExchangeCell) {
+      setSelectedExchangeCell({ date, roleCode, doctorId: assignment.doctorId });
+      setExchangeMessage("נבחר תא ראשון להחלפה. עכשיו בחר תא משובץ שני.");
+      return;
+    }
+    if (selectedExchangeCell.date === date && selectedExchangeCell.roleCode === roleCode) {
+      setSelectedExchangeCell(null);
+      setExchangeMessage("");
+      return;
+    }
+    if (!canExchangeCells(selectedExchangeCell, date, roleCode)) {
+      setExchangeMessage("לא ניתן לבצע החלפה בין שני התאים האלה.");
+      return;
+    }
+    onSwapCellClick("exchange", date, roleCode, selectedExchangeCell.doctorId, assignment.doctorId, selectedExchangeCell.date, selectedExchangeCell.roleCode);
+    setSelectedExchangeCell(null);
+    setExchangeMessage("");
+  }
+
+  return (
+    <div className="mobile-roster-list">
+      {days.map((day) => (
+        <article className="mobile-roster-card" key={day.key}>
+          <header className="mobile-roster-card-header">
+            <strong>{day.day}</strong>
+            <span>{day.weekdayLabel}</span>
+            <small>{formatShortDate(day.key)}</small>
+          </header>
+          <div className="mobile-roster-rows">
+            {roles.map((roleItem) => {
+              const key = cellKey(day.key, roleItem.code);
+              const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
+              const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+              const assignedDoc = assignment.doctorId ? doctors.find((doctor) => doctor.id === assignment.doctorId) : null;
+              const selected = selectedExchangeCell?.date === day.key && selectedExchangeCell.roleCode === roleItem.code;
+              const tappable = !disabled && !!assignment.doctorId && canUseCell(assignment);
+              return (
+                <button
+                  type="button"
+                  className={`mobile-roster-row mobile-roster-row-button ${disabled ? "disabled" : ""} ${selected ? "selected" : ""} ${tappable ? "interactive" : ""}`}
+                  key={roleItem.code}
+                  disabled={!tappable}
+                  onClick={() => handleCellTap(day.key, roleItem.code, assignment)}
+                >
+                  <span className="mobile-roster-row-meta">
+                    <span className="role-title">
+                      <i style={{ background: roleItem.color }} />
+                      {roleItem.name}
+                    </span>
+                    <small>{disabled ? "לא פעיל ביום זה" : assignment.pending ? "ממתין" : assignedDoc?.name ?? "לא שובץ"}</small>
+                  </span>
+                  <span className="mobile-roster-row-action">
+                    {selected ? "נבחר" : changeMode === "handoff" && tappable ? "מסירה" : changeMode === "exchange" && tappable ? "החלפה" : "-"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function PublishedRoster({
   schedule,
   roles,
@@ -2282,7 +2457,7 @@ function PublishedRoster({
         </div>
       )}
 
-      <div className="board-wrap">
+      <div className="board-wrap desktop-roster-table">
         <table className="roster-table">
           <thead>
             <tr>
@@ -2404,6 +2579,19 @@ function PublishedRoster({
           </tbody>
         </table>
       </div>
+      <MobilePublishedRosterDayCards
+        schedule={schedule}
+        roles={roles}
+        doctors={doctors}
+        days={days}
+        changeMode={changeMode}
+        selectedExchangeCell={selectedExchangeCell}
+        canUseCell={canUseCell}
+        canExchangeCells={canExchangeCells}
+        onSwapCellClick={onSwapCellClick}
+        setSelectedExchangeCell={setSelectedExchangeCell}
+        setExchangeMessage={setExchangeMessage}
+      />
 
       {canReviewRequests(role) && (
         <div style={{ marginTop: "32px", borderTop: "1px solid var(--line)", paddingTop: "20px" }}>
