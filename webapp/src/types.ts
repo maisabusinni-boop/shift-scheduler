@@ -81,6 +81,11 @@ export type ChangeRequest = {
   roleCode: RoleCode;
   currentDoctorId: string | null;
   proposedDoctorId: string | null;
+  changeKind?: "handoff" | "exchange";
+  sourceDate?: string;
+  sourceRoleCode?: RoleCode;
+  sourceDoctorId?: string | null;
+  changeCode?: string;
   reason: string;
   status: ChangeRequestStatus;
   resolutionNote: string;
@@ -148,6 +153,29 @@ export type AuditEntry = {
   snapshotFileId?: string;
   snapshotUrl?: string;
   changeCode?: string;
+  changeKind?: "handoff" | "exchange";
+  changeDetails?: PublishedChangeDetails;
+};
+
+export type PublishedChangeDetails = {
+  kind: "handoff" | "exchange";
+  code: string;
+  reason: string;
+  status: "direct" | "requested" | "approved";
+  source: {
+    date: string;
+    roleCode: RoleCode;
+    doctorId: string | null;
+  };
+  target: {
+    date: string;
+    roleCode: RoleCode;
+    doctorId: string | null;
+  };
+  result: {
+    sourceDoctorId: string | null;
+    targetDoctorId: string | null;
+  };
 };
 
 export type MonthSchedule = {

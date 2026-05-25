@@ -1,5 +1,5 @@
 import { createId } from "@/domain";
-import type { AppRole, AuditEntityType, AuditEntry, CurrentUser, DriveSyncState, RoleCode } from "@/types";
+import type { AppRole, AuditEntityType, AuditEntry, CurrentUser, DriveSyncState, PublishedChangeDetails, RoleCode } from "@/types";
 
 export type ActorContext = {
   googleUser: CurrentUser | null;
@@ -20,6 +20,9 @@ export type AuditInput = {
   after: unknown;
   snapshotFileId?: string;
   snapshotUrl?: string;
+  changeCode?: string;
+  changeKind?: "handoff" | "exchange";
+  changeDetails?: PublishedChangeDetails;
 };
 
 export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditEntry {
@@ -44,6 +47,9 @@ export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditE
     driveVersion: actor.driveSync.lastLoadedVersion ?? null,
     driveModifiedTime: actor.driveSync.lastLoadedModifiedTime ?? null,
     snapshotFileId: input.snapshotFileId,
-    snapshotUrl: input.snapshotUrl
+    snapshotUrl: input.snapshotUrl,
+    changeCode: input.changeCode,
+    changeKind: input.changeKind,
+    changeDetails: input.changeDetails
   };
 }

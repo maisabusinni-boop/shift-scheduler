@@ -117,6 +117,46 @@ describe("requests and audit", () => {
     expect(entry.before).toBeNull();
     expect(entry.after).toEqual({ doctorId: "doc-1", pending: false });
   });
+
+  it("stores published change metadata for the visual change log", () => {
+    const data = createSampleWorkspace();
+    const changeDetails = {
+      kind: "exchange" as const,
+      code: "SWP-TEST-001",
+      reason: "manual correction",
+      status: "direct" as const,
+      source: { date: "2026-05-01", roleCode: ROLE_CODES.RESIDENT_ON_CALL, doctorId: "doc-cohen" },
+      target: { date: "2026-05-02", roleCode: ROLE_CODES.HALF_RESIDENT, doctorId: "doc-levi" },
+      result: { sourceDoctorId: "doc-levi", targetDoctorId: "doc-cohen" }
+    };
+    const entry = createAuditEntry(
+      {
+        googleUser: { email: "planner@local", name: "Planner" },
+        appUserId: "user-1",
+        appRole: "senior-planner",
+        deviceId: "device-1",
+        driveSync: data.driveSync
+      },
+      {
+        action: "published-swap-direct",
+        entityType: "assignment",
+        entityId: "2026-05-02|half-resident",
+        scheduleKey: "2026-05",
+        date: "2026-05-02",
+        roleCode: ROLE_CODES.HALF_RESIDENT,
+        before: null,
+        after: null,
+        changeCode: changeDetails.code,
+        changeKind: changeDetails.kind,
+        changeDetails
+      }
+    );
+
+    expect(entry.changeCode).toBe("SWP-TEST-001");
+    expect(entry.changeKind).toBe("exchange");
+    expect(entry.changeDetails).toEqual(changeDetails);
+    expect(entry.snapshotUrl).toBeUndefined();
+  });
 });
 
 describe("migration", () => {
