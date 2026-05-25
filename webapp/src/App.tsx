@@ -9,10 +9,12 @@ import {
   FolderOpen,
   History,
   Mail,
+  Moon,
   Plus,
   RefreshCw,
   Save,
   Settings,
+  Sun,
   Table2,
   Trash2,
   Upload,
@@ -33,7 +35,6 @@ import {
   bootstrapPlanner,
   loadWorkspace,
   saveWorkspace,
-  adminSaveUsers,
   clearLocalCredentials,
   getLocalCredentials
 } from "@/googleDrive";
@@ -82,6 +83,15 @@ import "./styles.css";
 
 type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange";
+type SyncState = {
+  lastSavedAt: string | null;
+  lastSaveError: string | null;
+  isSavePending: boolean;
+  isSaving: boolean;
+  dirtySince: string | null;
+};
+
+const LAST_SAVED_VERSION_KEY = "department-shift-scheduler.last-saved-version";
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
   { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
@@ -105,11 +115,33 @@ const current = new Date();
 
 export function App() {
   const [data, setData] = useState<WorkspaceData>(() => loadLocalWorkspace());
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("theme", theme);
+    if (theme === "dark") {
+      document.body.classList.add("dark");
+    } else {
+      document.body.classList.remove("dark");
+    }
+  }, [theme]);
+
   const [year, setYear] = useState(current.getFullYear());
   const [month, setMonth] = useState(current.getMonth() + 1);
   const [tab, setTab] = useState<TabId>("roster");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncState, setSyncState] = useState<SyncState>({
+    lastSavedAt: null,
+    lastSaveError: null,
+    isSavePending: false,
+    isSaving: false,
+    dirtySince: null
+  });
   const [focusCell, setFocusCell] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(() => {
     const creds = getLocalCredentials();
@@ -147,8 +179,9 @@ export function App() {
   } | null>(null);
   const [swapTargetDoctorId, setSwapTargetDoctorId] = useState("");
   const [swapReason, setSwapReason] = useState("");
-  const lastSavedVersionRef = useRef<string | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedVersionRef = useRef<string | null>(localStorage.getItem(LAST_SAVED_VERSION_KEY));
+  const latestDataRef = useRef<WorkspaceData>(data);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const key = monthKey(year, month);
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
@@ -167,6 +200,10 @@ export function App() {
   }, [workspace, data]);
 
   useEffect(() => {
+    latestDataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
     if (!visibleTabs.some((item) => item.id === tab)) {
       setTab(visibleTabs[0]?.id ?? "roster");
     }
@@ -176,7 +213,23 @@ export function App() {
     saveLocalWorkspace(next);
     if (isSavedToServer) {
       lastSavedVersionRef.current = next.updatedAt;
+      localStorage.setItem(LAST_SAVED_VERSION_KEY, next.updatedAt);
+      setSyncState({
+        lastSavedAt: new Date().toISOString(),
+        lastSaveError: null,
+        isSavePending: false,
+        isSaving: false,
+        dirtySince: null
+      });
+    } else if (hasCredentials() && next.updatedAt !== lastSavedVersionRef.current) {
+      setSyncState((current) => ({
+        ...current,
+        lastSaveError: null,
+        isSavePending: true,
+        dirtySince: current.dirtySince ?? new Date().toISOString()
+      }));
     }
+    latestDataRef.current = next;
     setData(next);
   }
 
@@ -225,12 +278,86 @@ export function App() {
     return appUser;
   }
 
+  function rememberServerSave(saved: WorkspaceData, savedVersion: string) {
+    lastSavedVersionRef.current = savedVersion;
+    localStorage.setItem(LAST_SAVED_VERSION_KEY, savedVersion);
+    const hasNewerLocalChanges = latestDataRef.current.updatedAt !== savedVersion;
+    if (hasNewerLocalChanges) {
+      setSyncState((current) => ({
+        ...current,
+        lastSavedAt: new Date().toISOString(),
+        lastSaveError: null,
+        isSaving: false,
+        isSavePending: true,
+        dirtySince: current.dirtySince ?? new Date().toISOString()
+      }));
+      return;
+    }
+    setAndPersist(saved, true);
+  }
+
+  async function saveCurrentWorkspaceToServer(options: { checkRemote?: boolean } = {}) {
+    if (!hasCredentials()) {
+      setSyncState((current) => ({ ...current, isSavePending: false, isSaving: false }));
+      return;
+    }
+    const dataToSave = latestDataRef.current;
+    setSyncState((current) => ({ ...current, isSavePending: false, isSaving: true, lastSaveError: null }));
+    try {
+      if (options.checkRemote) {
+        const remote = await loadWorkspace();
+        const remoteChanged = Boolean(lastSavedVersionRef.current && remote.updatedAt !== lastSavedVersionRef.current);
+        if (remoteChanged) {
+          if (role !== "senior-planner") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
+          const overwrite = window.confirm("הקובץ בשרת השתנה מאז השמירה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
+          if (!overwrite) {
+            setSyncState((current) => ({ ...current, isSaving: false, isSavePending: true }));
+            return;
+          }
+        }
+      }
+      const saved = await saveWorkspace(dataToSave);
+      rememberServerSave(saved, dataToSave.updatedAt);
+    } catch (err) {
+      setSyncState((current) => ({
+        ...current,
+        isSaving: false,
+        isSavePending: true,
+        lastSaveError: err instanceof Error ? err.message : String(err),
+        dirtySince: current.dirtySince ?? new Date().toISOString()
+      }));
+      throw err;
+    }
+  }
+
+  async function retrySave() {
+    try {
+      await saveCurrentWorkspaceToServer({ checkRemote: true });
+      setMessage("הנתונים נשמרו בהצלחה בשרת.");
+    } catch (err) {
+      setMessage("שמירה נכשלה: " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  async function loadFromServerWithUnsavedCheck() {
+    const hasUnsavedLocalChanges = syncState.isSavePending || syncState.isSaving || Boolean(syncState.lastSaveError) || data.updatedAt !== lastSavedVersionRef.current;
+    if (hasUnsavedLocalChanges) {
+      const confirmed = window.confirm("יש שינויים מקומיים שעדיין לא נשמרו בשרת. טעינה מחדש מהשרת תחליף אותם. להמשיך?");
+      if (!confirmed) return;
+    }
+    await run(async () => {
+      const loaded = await loadWorkspace();
+      setAndPersist(loaded, true);
+    }, "הנתונים רועננו מהשרת.");
+  }
+
   useEffect(() => {
     if (hasCredentials()) {
       run(async () => {
         const remoteData = await loadWorkspace();
         lastSavedVersionRef.current = remoteData.updatedAt;
-        setData(remoteData);
+        localStorage.setItem(LAST_SAVED_VERSION_KEY, remoteData.updatedAt);
+        setAndPersist(remoteData, true);
       }, "הנתונים נטענו מחדש מהשרת.");
     }
   }, []);
@@ -241,6 +368,7 @@ export function App() {
     
     if (!lastSavedVersionRef.current) {
       lastSavedVersionRef.current = data.updatedAt;
+      localStorage.setItem(LAST_SAVED_VERSION_KEY, data.updatedAt);
       return;
     }
     
@@ -253,9 +381,7 @@ export function App() {
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         console.log("Autosaving changes to server...");
-        const saved = await saveWorkspace(data);
-        lastSavedVersionRef.current = saved.updatedAt;
-        setAndPersist(saved, true);
+        await saveCurrentWorkspaceToServer();
       } catch (err) {
         console.error("Autosave failed: ", err);
         setMessage("שמירה אוטומטית נכשלה: " + (err instanceof Error ? err.message : String(err)));
@@ -290,7 +416,8 @@ export function App() {
       const appUser = await loginWithCredentials(loginUrl, loginUsername, passHash);
       const loaded = await loadWorkspace();
       lastSavedVersionRef.current = loaded.updatedAt;
-      setData(loaded);
+      localStorage.setItem(LAST_SAVED_VERSION_KEY, loaded.updatedAt);
+      setAndPersist(loaded, true);
       setCurrentUser({ username: loginUsername, name: appUser.name });
       setMessage("התחברת בהצלחה!");
     } catch (err) {
@@ -317,7 +444,8 @@ export function App() {
       const passHash = await hashPassword(loginPassword);
       const result = await bootstrapPlanner(loginUrl, loginUsername, plannerName, passHash);
       lastSavedVersionRef.current = result.data.updatedAt;
-      setData(result.data);
+      localStorage.setItem(LAST_SAVED_VERSION_KEY, result.data.updatedAt);
+      setAndPersist(result.data, true);
       setCurrentUser({ username: loginUsername, name: result.user.name });
       setMessage("המערכת הוקמה בהצלחה! הוגדרת כמתכנן בכיר.");
     } catch (err) {
@@ -519,7 +647,6 @@ export function App() {
 
   async function loadTestData() {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לטעון נתוני בדיקה.");
-    setBusy(true);
     try {
       const testDoctors: Doctor[] = [
         { id: "doc-res-1", name: 'ד"ר מיכל כהן', group: "resident", canAngio: false, active: true },
@@ -560,13 +687,23 @@ export function App() {
         passwordHash: hash
       });
 
-      const updatedWorkspace = await adminSaveUsers(cleanUsers, testDoctors);
-      setAndPersist(updatedWorkspace, true);
-      setMessage("20 רופאי בדיקה והמשתמש mais (סיסמה: 203-mais) נטענו בהצלחה מחשבון השרת!");
+      commitChange({
+        mutator: (draft) => {
+          const before = { doctors: draft.doctors, users: draft.users };
+          draft.doctors = testDoctors;
+          draft.users = cleanUsers;
+          return {
+            action: "test-data-load",
+            entityType: "settings",
+            entityId: "test-data",
+            before,
+            after: { doctors: draft.doctors, users: draft.users }
+          };
+        },
+        note: "20 רופאי בדיקה והמשתמש mais (סיסמה: 203-mais) נטענו מקומית ויישמרו ברקע."
+      });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "טעינת נתוני בדיקה נכשלה.");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -720,57 +857,59 @@ export function App() {
       passwordHash = await hashPassword(password);
     }
     
-    setBusy(true);
-    try {
-      const nextUsers = [...workspace.users];
-      const matchIndex = nextUsers.findIndex(u => u.doctorId === doctorId);
-      
-      const userMail = username ? username + "@local" : (existing?.email || (newName + "@local"));
-      
-      if (matchIndex !== -1) {
-        nextUsers[matchIndex] = {
-          ...nextUsers[matchIndex],
-          email: userMail,
-          name: newName,
-          role: appRole,
-          active: true,
-          passwordHash
+    const userMail = username ? username + "@local" : (existing?.email || (newName + "@local"));
+    commitChange({
+      mutator: (draft) => {
+        const before = {
+          doctor: draft.doctors.find((d) => d.id === doctorId) ?? null,
+          user: draft.users.find((u) => u.doctorId === doctorId) ?? null
         };
-      } else {
-        nextUsers.push({
-          id: createId("user"),
-          email: userMail,
-          name: newName,
-          role: appRole,
-          doctorId: doctorId,
-          active: true,
-          createdAt: new Date().toISOString(),
-          passwordHash
-        });
-      }
-      
-      const nextDoctors = [...workspace.doctors];
-      const docIndex = nextDoctors.findIndex((d) => d.id === doctorId);
-      if (docIndex !== -1) {
-        nextDoctors[docIndex] = {
-          ...nextDoctors[docIndex],
-          name: newName,
-          group: newGroup,
-          canAngio: newCanAngio
+        const docIndex = draft.doctors.findIndex((d) => d.id === doctorId);
+        if (docIndex !== -1) {
+          draft.doctors[docIndex] = {
+            ...draft.doctors[docIndex],
+            name: newName,
+            group: newGroup,
+            canAngio: newCanAngio
+          };
+        }
+
+        const matchIndex = draft.users.findIndex((u) => u.doctorId === doctorId);
+        if (matchIndex !== -1) {
+          draft.users[matchIndex] = {
+            ...draft.users[matchIndex],
+            email: userMail,
+            name: newName,
+            role: appRole,
+            active: true,
+            passwordHash
+          };
+        } else {
+          draft.users.push({
+            id: createId("user"),
+            email: userMail,
+            name: newName,
+            role: appRole,
+            doctorId,
+            active: true,
+            createdAt: new Date().toISOString(),
+            passwordHash
+          });
+        }
+        return {
+          action: "doctor-user-update",
+          entityType: "doctor",
+          entityId: doctorId,
+          before,
+          after: {
+            doctor: draft.doctors.find((d) => d.id === doctorId) ?? null,
+            user: draft.users.find((u) => u.doctorId === doctorId) ?? null
+          }
         };
-      }
-      
-      const updatedWorkspace = await adminSaveUsers(nextUsers, nextDoctors);
-      setAndPersist(updatedWorkspace, true);
-      setMessage("פרטי הרופא והמשתמש עודכנו בהצלחה בשרת.");
-      
-      // Clear password draft
-      setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "השמירה נכשלה.");
-    } finally {
-      setBusy(false);
-    }
+      },
+      note: "פרטי הרופא והמשתמש עודכנו מקומית ויישמרו ברקע."
+    });
+    setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
   }
 
   function removeDoctor(doctorId: string) {
@@ -952,7 +1091,6 @@ export function App() {
     };
 
     if (isDirect) {
-      setBusy(true);
       setMessage(mode === "exchange" ? "מבצע החלפה ומתעד ביומן..." : "מבצע מסירה ומתעד ביומן...");
       try {
         commitChange({
@@ -997,7 +1135,6 @@ export function App() {
       } catch (err) {
         setMessage("שגיאה בביצוע השינוי: " + (err instanceof Error ? err.message : String(err)));
       } finally {
-        setBusy(false);
         setSwapModalCell(null);
         setSwapTargetDoctorId("");
         setSwapReason("");
@@ -1060,7 +1197,6 @@ export function App() {
       return;
     }
 
-    setBusy(true);
     setMessage("מאשר שינוי ומתעד ביומן...");
     const changeCode = request.changeCode ?? createChangeCode();
     const details: PublishedChangeDetails = {
@@ -1140,8 +1276,6 @@ export function App() {
 
     } catch (err) {
       setMessage("שגיאה באישור הבקשה: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -1197,6 +1331,14 @@ export function App() {
             <h1>{workspace.workspace.name}</h1>
             <p>חיבור למערכת סידור תורנויות מחלקתי</p>
           </div>
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+            aria-label="Toggle theme"
+          >
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
         </header>
         
         <section className="panel" style={{ maxWidth: "450px", margin: "40px auto", padding: "24px" }}>
@@ -1274,9 +1416,18 @@ export function App() {
           <p>סידור תורנויות מחלקתי · RTL Roster Portal</p>
         </div>
         <div className="month-controls">
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+            aria-label="Toggle theme"
+          >
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
           <input type="number" value={month} min={1} max={12} onChange={(event) => setMonth(Number(event.target.value))} />
           <input type="number" value={year} min={2020} max={2100} onChange={(event) => setYear(Number(event.target.value))} />
           <span className={`status ${schedule.status}`}>{schedule.status === "published" ? "נעול" : "טיוטה"}</span>
+          <SyncStatus state={syncState} connected={hasCredentials()} onRetry={retrySave} />
         </div>
       </header>
 
@@ -1402,8 +1553,9 @@ export function App() {
             <DrivePanel
               data={workspace}
               busy={busy}
-              run={run}
-              setAndPersist={setAndPersist}
+              syncState={syncState}
+              retrySave={retrySave}
+              loadFromServer={loadFromServerWithUnsavedCheck}
               actorRole={role}
               handleLogout={handleLogout}
             />
@@ -1600,6 +1752,24 @@ function LockedPanel({ title, text }: { title: string; text: string }) {
 
 function InfoCell({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" | "bad" }) {
   return <div className={`info-cell ${tone ?? ""}`}><span>{label}</span><b>{value}</b></div>;
+}
+
+function SyncStatus({ state, connected, onRetry }: { state: SyncState; connected: boolean; onRetry: () => void }) {
+  if (!connected) {
+    return <span className="sync-status local">עובד מקומית</span>;
+  }
+  if (state.lastSaveError) {
+    return (
+      <span className="sync-status failed">
+        שמירה נכשלה
+        <button onClick={onRetry}>נסה שוב</button>
+      </span>
+    );
+  }
+  if (state.isSaving || state.isSavePending) {
+    return <span className="sync-status saving">שומר...</span>;
+  }
+  return <span className="sync-status saved">נשמר</span>;
 }
 
 function createChangeCode() {
@@ -2533,19 +2703,22 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
 function DrivePanel({
   data,
   busy,
-  run,
-  setAndPersist,
+  syncState,
+  retrySave,
+  loadFromServer,
   actorRole,
   handleLogout
 }: {
   data: WorkspaceData;
   busy: boolean;
-  run: (action: () => Promise<void>, note?: string) => Promise<void>;
-  setAndPersist: (data: WorkspaceData, isSavedToServer?: boolean) => void;
+  syncState: SyncState;
+  retrySave: () => void;
+  loadFromServer: () => void;
   actorRole: AppRole | null;
   handleLogout: () => void;
 }) {
   const credentials = getLocalCredentials();
+  const saveLabel = syncState.lastSaveError ? "נסה לשמור שוב" : syncState.isSavePending || syncState.isSaving ? "שמור עכשיו" : "שמור שינויים לשרת";
   
   return (
     <section className="panel">
@@ -2562,28 +2735,15 @@ function DrivePanel({
         <button
           className="primary"
           style={{ alignSelf: "end" }}
-          onClick={() => run(async () => {
-            const remote = await loadWorkspace();
-            const remoteChanged = data.updatedAt && remote.updatedAt !== data.updatedAt;
-            if (remoteChanged) {
-              if (actorRole !== "senior-planner") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
-              const overwrite = window.confirm("הקובץ בשרת השתנה מאז הטעינה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
-              if (!overwrite) return;
-            }
-            const saved = await saveWorkspace(data);
-            setAndPersist(saved, true);
-          }, "הנתונים נשמרו בהצלחה בשרת.")}
-          disabled={busy}
+          onClick={retrySave}
+          disabled={busy || syncState.isSaving}
         >
-          <Save size={17} />שמור שינויים לשרת
+          <Save size={17} />{syncState.isSaving ? "שומר..." : saveLabel}
         </button>
         
         <button
           style={{ alignSelf: "end" }}
-          onClick={() => run(async () => {
-            const loaded = await loadWorkspace();
-            setAndPersist(loaded, true);
-          }, "הנתונים רועננו מהשרת.")}
+          onClick={loadFromServer}
           disabled={busy}
         >
           <RefreshCw size={17} />טען מחדש מהשרת
@@ -2592,7 +2752,9 @@ function DrivePanel({
       <div className="list">
         <div className="list-row"><span>שם משתמש מחובר</span><b dir="ltr">{credentials.username}</b></div>
         <div className="list-row"><span>כתובת שרת</span><b dir="ltr" className="truncate">{getWebAppUrl()}</b></div>
-        <div className="list-row"><span>עדכון אחרון בשרת</span><b>{data.updatedAt ? new Date(data.updatedAt).toLocaleString("he-IL") : "טרם נשמר"}</b></div>
+        <div className="list-row"><span>עדכון מקומי אחרון</span><b>{data.updatedAt ? new Date(data.updatedAt).toLocaleString("he-IL") : "טרם נשמר"}</b></div>
+        <div className="list-row"><span>שמירה אחרונה לשרת</span><b>{syncState.lastSavedAt ? new Date(syncState.lastSavedAt).toLocaleString("he-IL") : "טרם נשמר בסשן הזה"}</b></div>
+        {syncState.lastSaveError ? <div className="list-row error"><span>שגיאת שמירה</span><b>{syncState.lastSaveError}</b></div> : null}
       </div>
     </section>
   );
