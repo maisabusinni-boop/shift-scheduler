@@ -2524,6 +2524,8 @@ function PublishedRoster({
     isMobile ? buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId) : null
   ), [days, isMobile, lens, ownDoctorId, roles, schedule, weekIndex]);
   const todayKey = useMemo(() => scheduleTodayKey(schedule), [schedule]);
+  const canUsePublishedChangeTools = schedule.status === "published";
+  const disabledChangeToolsTitle = canUsePublishedChangeTools ? undefined : "אפשר לבצע מסירה והחלפות רק אחרי פרסום הסידור.";
   const ownAssignmentDayKeys = useMemo(() => {
     const keys = new Set<string>();
     const currentNames = [appUser?.name, currentUser.name]
@@ -2664,11 +2666,13 @@ function PublishedRoster({
           <span>{formatScheduleMonth(schedule)} · {schedule.status === "published" ? "מצב צפייה פעיל" : "טיוטה (קריאה בלבד)"}</span>
         </div>
         <div className="actions">
-          {schedule.status === "published" && (
             <>
               <button
                 className={changeMode === "handoff" ? "primary" : ""}
+                disabled={!canUsePublishedChangeTools}
+                title={disabledChangeToolsTitle}
                 onClick={() => {
+                  if (!canUsePublishedChangeTools) return;
                   setChangeMode(changeMode === "handoff" ? null : "handoff");
                   setSelectedExchangeCell(null);
                   setDragSource(null);
@@ -2680,7 +2684,10 @@ function PublishedRoster({
               </button>
               <button
                 className={changeMode === "exchange" ? "primary" : ""}
+                disabled={!canUsePublishedChangeTools}
+                title={disabledChangeToolsTitle}
                 onClick={() => {
+                  if (!canUsePublishedChangeTools) return;
                   setChangeMode(changeMode === "exchange" ? null : "exchange");
                   setSelectedExchangeCell(null);
                   setDragSource(null);
@@ -2693,7 +2700,10 @@ function PublishedRoster({
               {!isMobile ? (
                 <button
                   className={changeMode === "auto-exchange" ? "primary" : ""}
+                  disabled={!canUsePublishedChangeTools}
+                  title={disabledChangeToolsTitle}
                   onClick={() => {
+                    if (!canUsePublishedChangeTools) return;
                     setChangeMode(changeMode === "auto-exchange" ? null : "auto-exchange");
                     setSelectedExchangeCell(null);
                     setDragSource(null);
@@ -2705,11 +2715,10 @@ function PublishedRoster({
                 </button>
               ) : null}
             </>
-          )}
         </div>
       </div>
 
-      {schedule.status === "published" && changeMode && (
+      {canUsePublishedChangeTools && changeMode && (
         <div className="notice" style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af", marginBottom: "12px", fontSize: "14px" }}>
           {changeMode === "handoff" ? (
             <><strong>מסירה:</strong> לחץ על תא משובץ כדי לבחור רופא שיקבל את התורנות.</>
