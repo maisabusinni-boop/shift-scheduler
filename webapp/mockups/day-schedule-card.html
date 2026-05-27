@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup - Day Schedule Card</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --panel: #ffffff;
+      --header: #f8fafc;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --shadow: 0 20px 42px rgba(15, 23, 42, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      align-items: center;
+      background: #eef2f7;
+      color: var(--ink);
+      display: grid;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+      justify-self: center;
+      max-width: 430px;
+      width: min(100%, 430px);
+    }
+
+    .day-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .day-card header {
+      align-items: center;
+      background: var(--header);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      padding: 9px 12px;
+    }
+
+    .date {
+      align-items: baseline;
+      display: flex;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .date strong {
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .date span {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .date small {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .close {
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      display: inline-grid;
+      font-size: 18px;
+      height: 30px;
+      justify-content: center;
+      width: 30px;
+    }
+
+    .rows {
+      display: grid;
+    }
+
+    .row {
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: minmax(86px, 0.48fr) minmax(0, 1fr);
+      min-height: 43px;
+      padding: 7px 12px;
+    }
+
+    .row:last-child { border-bottom: 0; }
+
+    .role {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      font-weight: 800;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .role i {
+      border-radius: 999px;
+      flex: 0 0 auto;
+      height: 8px;
+      width: 8px;
+    }
+
+    .doctor {
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+
+    .doctor.empty {
+      color: #94a3b8;
+      font-weight: 800;
+    }
+
+    .note {
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 800;
+      margin-inline-start: 6px;
+      white-space: nowrap;
+    }
+
+    .mine {
+      background: rgba(22, 163, 74, 0.08);
+      border-inline-start: 4px solid var(--green);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="day-card" aria-label="Non-Friday compact popup mockup">
+      <header>
+        <div class="date">
+          <strong>14</strong>
+          <span>רביעי</span>
+          <small>14/06/2026</small>
+        </div>
+        <div class="close" aria-hidden="true">×</div>
+      </header>
+      <div class="rows">
+        <div class="row">
+          <div class="role"><i style="background:#2563eb"></i>תורן מתמחה</div>
+          <div class="doctor">ד״ר כהן</div>
+        </div>
+        <div class="row mine">
+          <div class="role"><i style="background:#16a34a"></i>חצי מתמחה</div>
+          <div class="doctor">ד״ר לוי <span class="note">התורנות שלי</span></div>
+        </div>
+        <div class="row">
+          <div class="role"><i style="background:#9333ea"></i>כונן א</div>
+          <div class="doctor">ד״ר אבני</div>
+        </div>
+        <div class="row">
+          <div class="role"><i style="background:#f97316"></i>אנגיו</div>
+          <div class="doctor empty">לא שובץ</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="day-card" aria-label="Friday compact popup mockup">
+      <header>
+        <div class="date">
+          <strong>16</strong>
+          <span>שישי</span>
+          <small>16/06/2026</small>
+        </div>
+        <div class="close" aria-hidden="true">×</div>
+      </header>
+      <div class="rows">
+        <div class="row">
+          <div class="role"><i style="background:#2563eb"></i>תורן מתמחה</div>
+          <div class="doctor">ד״ר כהן</div>
+        </div>
+        <div class="row">
+          <div class="role"><i style="background:#64748b"></i>שישי בוקר מתמחה</div>
+          <div class="doctor">ד״ר ברק</div>
+        </div>
+        <div class="row">
+          <div class="role"><i style="background:#9333ea"></i>כונן א</div>
+          <div class="doctor">ד״ר אבני</div>
+        </div>
+        <div class="row">
+          <div class="role"><i style="background:#475569"></i>שישי בוקר מומחה</div>
+          <div class="doctor">ד״ר אבני</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

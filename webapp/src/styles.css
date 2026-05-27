@@ -535,6 +535,12 @@ textarea {
   display: none;
 }
 
+.published-schedule-tools {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
 .schedule-lens-bar {
   display: grid;
   gap: 10px;
@@ -637,6 +643,34 @@ textarea {
   text-align: center;
 }
 
+@media (min-width: 761px) {
+  .published-schedule-tools {
+    align-items: start;
+    grid-template-columns: 180px 220px minmax(0, 1fr);
+  }
+
+  .published-schedule-tools .my-schedule-summary {
+    min-height: 100%;
+  }
+
+  .published-schedule-tools .schedule-month-map {
+    gap: 4px;
+  }
+
+  .published-schedule-tools .schedule-month-map button {
+    min-height: 42px;
+    padding: 4px 2px;
+  }
+
+  .published-schedule-tools .schedule-month-map b {
+    font-size: 15px;
+  }
+
+  .published-schedule-tools .schedule-month-map span {
+    font-size: 11px;
+  }
+}
+
 .my-schedule-summary {
   align-items: center;
   background: linear-gradient(135deg, rgba(22, 163, 74, 0.12), rgba(37, 99, 235, 0.09));
@@ -659,7 +693,15 @@ textarea {
 }
 
 .day-schedule-modal {
-  width: min(520px, calc(100vw - 24px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 26px 60px rgba(15, 23, 42, 0.28);
+  width: min(430px, calc(100vw - 24px));
+}
+
+.modal-overlay:has(.day-schedule-modal) {
+  background: rgba(15, 23, 42, 0.64);
+  backdrop-filter: blur(2px);
 }
 
 .day-schedule-modal-header {
@@ -667,7 +709,7 @@ textarea {
   display: flex;
   gap: 12px;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .day-schedule-modal-header h3 {
@@ -680,7 +722,7 @@ textarea {
 
 .day-schedule-modal .mobile-roster-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 
 .request-review-section {
@@ -1546,7 +1588,7 @@ textarea {
   .mobile-roster-card {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 8px;
     box-shadow: var(--shadow);
     overflow: hidden;
   }
@@ -1561,9 +1603,9 @@ textarea {
     background: var(--header);
     border-bottom: 1px solid var(--line);
     display: grid;
-    gap: 3px 8px;
+    gap: 2px 8px;
     grid-template-columns: auto 1fr auto;
-    padding: 10px 12px;
+    padding: 9px 12px;
   }
 
   .mobile-roster-card-header strong {
@@ -1586,11 +1628,9 @@ textarea {
     border-radius: 0;
     color: var(--ink);
     display: grid;
-    gap: 10px;
-    grid-template-columns: minmax(0, 1fr) minmax(120px, 0.72fr);
     justify-content: stretch;
-    min-height: 58px;
-    padding: 10px 12px;
+    min-height: 44px;
+    padding: 7px 12px;
     text-align: right;
     width: 100%;
   }
@@ -1638,20 +1678,49 @@ textarea {
 
   .mobile-roster-row-meta {
     display: grid;
-    gap: 4px;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .mobile-roster-row-main {
+    align-items: baseline;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(86px, 0.48fr) minmax(0, 1fr);
     min-width: 0;
   }
 
   .mobile-roster-row-meta .role-title {
-    font-size: 15px;
+    color: var(--muted);
+    font-size: 12px;
     font-weight: 800;
     justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .mobile-roster-row-meta .role-title i {
+    height: 8px;
+    width: 8px;
+  }
+
+  .mobile-roster-row-meta strong {
+    color: var(--ink);
+    font-size: 17px;
+    font-weight: 900;
+    line-height: 1.15;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-roster-row-meta strong.unassigned {
+    color: #94a3b8;
+    font-weight: 800;
   }
 
   .mobile-roster-row-meta small {
-    color: var(--muted);
-    font-size: 14px;
-    font-weight: 700;
+    color: var(--blue);
+    font-size: 11px;
+    font-weight: 800;
     overflow-wrap: anywhere;
   }
 

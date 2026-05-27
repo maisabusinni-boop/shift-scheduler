@@ -2419,37 +2419,35 @@ function MobilePublishedRosterDayCards({
     <div className="mobile-roster-list">
       {days.map((day) => (
         <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""}`} key={day.key}>
-          <header className="mobile-roster-card-header">
-            <strong>{day.day}</strong>
-            <span>{day.weekdayLabel}</span>
-            <small>{formatShortDate(day.key)}</small>
-          </header>
           <div className="mobile-roster-rows">
             {roles.map((roleItem) => {
               const key = cellKey(day.key, roleItem.code);
               const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
               const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+              if (disabled) return null;
               const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
               const selected = selectedExchangeCell?.date === day.key && selectedExchangeCell.roleCode === roleItem.code;
-              const tappable = !disabled && !!assignment.doctorId && canUseCell(assignment);
+              const tappable = !!assignment.doctorId && canUseCell(assignment);
               const mine = assignment.doctorId === ownDoctorId;
+              const actionLabel = selected ? "נבחר" : changeMode === "handoff" && tappable ? "מסירה" : changeMode === "exchange" && tappable ? "החלפה" : null;
+              const statusLabel = assignment.pending ? "ממתין" : actionLabel ?? (mine ? "התורנות שלי" : null);
               return (
                 <button
                   type="button"
-                  className={`mobile-roster-row mobile-roster-row-button ${disabled ? "disabled" : ""} ${selected ? "selected" : ""} ${tappable ? "interactive" : ""} ${mine ? "mine-assignment" : ""}`}
+                  className={`mobile-roster-row mobile-roster-row-button ${selected ? "selected" : ""} ${tappable ? "interactive" : ""} ${mine ? "mine-assignment" : ""}`}
                   key={roleItem.code}
                   disabled={!tappable}
                   onClick={() => handleCellTap(day.key, roleItem.code, assignment)}
                 >
                   <span className="mobile-roster-row-meta">
-                    <span className="role-title">
-                      <i style={{ background: roleItem.color }} />
-                      {roleItem.name}
+                    <span className="mobile-roster-row-main">
+                      <span className="role-title">
+                        <i style={{ background: roleItem.color }} />
+                        {roleItem.name}
+                      </span>
+                      <strong className={assignedDoc ? "" : "unassigned"}>{assignedDoc?.name ?? "לא שובץ"}</strong>
                     </span>
-                    <small>{disabled ? "לא פעיל ביום זה" : assignment.pending ? "ממתין" : assignedDoc?.name ?? "לא שובץ"}</small>
-                  </span>
-                  <span className="mobile-roster-row-action">
-                    {selected ? "נבחר" : changeMode === "handoff" && tappable ? "מסירה" : changeMode === "exchange" && tappable ? "החלפה" : "-"}
+                    {statusLabel ? <small>{statusLabel}</small> : null}
                   </span>
                 </button>
               );
@@ -2511,8 +2509,8 @@ function PublishedRoster({
   const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor] as const)), [doctors]);
   const rolesByCode = useMemo(() => new Map(roles.map((roleItem) => [roleItem.code, roleItem] as const)), [roles]);
   const scheduleView = useMemo(() => (
-    isMobile ? buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId) : null
-  ), [days, isMobile, lens, ownDoctorId, roles, schedule, weekIndex]);
+    buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId)
+  ), [days, lens, ownDoctorId, roles, schedule, weekIndex]);
   const todayKey = useMemo(() => scheduleTodayKey(schedule), [schedule]);
 
   function canDragCell(assignment: Assignment): boolean {
@@ -2630,7 +2628,7 @@ function PublishedRoster({
         </div>
       )}
 
-      {isMobile && scheduleView ? <div className="mobile-schedule-tools">
+      {scheduleView ? <div className="mobile-schedule-tools published-schedule-tools">
         <div className="my-schedule-summary">
           <span>התורנויות שלי</span>
           <b>{scheduleView.mineCount}</b>
@@ -2782,7 +2780,7 @@ function PublishedRoster({
           </tbody>
         </table>
       </div> : null}
-      {isMobile && selectedMobileDayKey ? (
+      {selectedMobileDayKey ? (
         <MobileDayScheduleModal
           schedule={schedule}
           roles={roles}
@@ -2893,7 +2891,6 @@ function MobileDayScheduleModal({
         <header className="day-schedule-modal-header">
           <div>
             <h3>{day.weekdayLabel} · {formatShortDate(day.key)}</h3>
-            <small>הרופאים המשובצים ביום זה</small>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="סגור"><X size={16} /></button>
         </header>
