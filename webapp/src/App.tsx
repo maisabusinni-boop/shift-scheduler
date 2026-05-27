@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import {
   CalendarCheck,
-  CalendarDays,
   Check,
   Cloud,
   Download,
@@ -1865,24 +1864,13 @@ function ScheduleLensControls({
     <div className="schedule-lens-bar">
       <div className="segmented-control" role="tablist" aria-label="תצוגת סידור">
         <button type="button" className={lens === "month" ? "active" : ""} onClick={() => setLens("month")}>
-          <CalendarDays size={16} />
           חודש
-        </button>
-        <button type="button" className={lens === "week" ? "active" : ""} onClick={() => setLens("week")}>
-          שבוע
         </button>
         <button type="button" className={lens === "mine" ? "active" : ""} onClick={() => setLens("mine")} disabled={!canUseMine}>
           <LocateFixed size={16} />
           שלי {canUseMine ? `(${mineCount})` : ""}
         </button>
       </div>
-      {lens === "week" ? (
-        <div className="week-stepper">
-          <button type="button" onClick={() => setWeekIndex(Math.max(0, weekIndex - 1))} disabled={weekIndex === 0}>הקודם</button>
-          <strong>שבוע {weekIndex + 1} מתוך {weeks.length}</strong>
-          <button type="button" onClick={() => setWeekIndex(Math.min(weeks.length - 1, weekIndex + 1))} disabled={weekIndex >= weeks.length - 1}>הבא</button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -2507,10 +2495,15 @@ function PublishedRoster({
   const ownDoctorId = appUser?.doctorId ?? null;
   const [lens, setLens] = useState<ScheduleLens>("month");
   const [weekIndex, setWeekIndex] = useState(() => currentWeekIndexForSchedule(schedule, days));
+  const [selectedMobileDayKey, setSelectedMobileDayKey] = useState<string | null>(null);
 
   useEffect(() => {
     setWeekIndex(currentWeekIndexForSchedule(schedule, days));
   }, [schedule.key, days]);
+
+  useEffect(() => {
+    setSelectedMobileDayKey(null);
+  }, [schedule.key]);
 
   const pendingRequests = useMemo(() => {
     return changeRequests.filter(r => r.scheduleKey === schedule.key && r.status === "submitted");
@@ -2662,7 +2655,7 @@ function PublishedRoster({
           onSelectDay={(date) => {
             const index = scheduleView.weeks.findIndex((week) => week.some((day) => day.key === date));
             if (index >= 0) setWeekIndex(index);
-            setLens("week");
+            setSelectedMobileDayKey(date);
           }}
         />
       </div> : null}
@@ -2789,61 +2782,78 @@ function PublishedRoster({
           </tbody>
         </table>
       </div> : null}
-      {isMobile && scheduleView ? <MobilePublishedRosterDayCards
-        schedule={schedule}
-        roles={roles}
-        doctorsById={doctorsById}
-        days={scheduleView.visibleDays}
-        changeMode={changeMode}
-        selectedExchangeCell={selectedExchangeCell}
-        ownDoctorId={ownDoctorId}
-        ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
-        canUseCell={canUseCell}
-        canExchangeCells={canExchangeCells}
-        onSwapCellClick={onSwapCellClick}
-        setSelectedExchangeCell={setSelectedExchangeCell}
-        setExchangeMessage={setExchangeMessage}
-      /> : null}
+      {isMobile && selectedMobileDayKey ? (
+        <MobileDayScheduleModal
+          schedule={schedule}
+          roles={roles}
+          doctorsById={doctorsById}
+          day={days.find((day) => day.key === selectedMobileDayKey) ?? null}
+          changeMode={changeMode}
+          selectedExchangeCell={selectedExchangeCell}
+          ownDoctorId={ownDoctorId}
+          ownAssignmentDayKeys={scheduleView?.ownAssignmentDayKeys ?? new Set<string>()}
+          canUseCell={canUseCell}
+          canExchangeCells={canExchangeCells}
+          onSwapCellClick={onSwapCellClick}
+          setSelectedExchangeCell={setSelectedExchangeCell}
+          setExchangeMessage={setExchangeMessage}
+          onClose={() => setSelectedMobileDayKey(null)}
+        />
+      ) : null}
 
       {canReviewRequests(role) && (
-        <div style={{ marginTop: "32px", borderTop: "1px solid var(--line)", paddingTop: "20px" }}>
+        <div className="request-review-section">
           <h3>בקשות החלפה והעברת תורנויות הממתינות לאישור</h3>
           {pendingRequests.length === 0 ? (
             <p style={{ color: "var(--muted)", fontSize: "14px" }}>אין בקשות תלויות ועומדות לאישור בחודש זה.</p>
           ) : (
-            <div className="list" style={{ marginTop: "12px" }}>
+            <div className="request-review-list">
               {pendingRequests.map((req) => {
-                const requesterDoc = doctors.find(d => d.id === req.requesterDoctorId);
-                const currentDoc = doctors.find(d => d.id === req.currentDoctorId);
-                const proposedDoc = doctors.find(d => d.id === req.proposedDoctorId);
-                const roleObj = roles.find(r => r.code === req.roleCode);
-                
-                const [y, m, d] = req.date.split("-");
-                const formattedDate = `${d}/${m}/${y}`;
+                const requesterDoc = doctorsById.get(req.requesterDoctorId);
+                const currentDoc = req.currentDoctorId ? doctorsById.get(req.currentDoctorId) : null;
+                const proposedDoc = req.proposedDoctorId ? doctorsById.get(req.proposedDoctorId) : null;
+                const kind = req.changeKind ?? "handoff";
+                const sourceDoc = kind === "exchange"
+                  ? (req.sourceDoctorId ? doctorsById.get(req.sourceDoctorId) : null) ?? requesterDoc
+                  : currentDoc ?? requesterDoc;
+                const targetDoc = kind === "exchange" ? currentDoc : proposedDoc;
+                const sourceRole = rolesByCode.get(req.sourceRoleCode ?? req.roleCode);
+                const targetRole = rolesByCode.get(req.roleCode);
 
                 return (
-                  <div className="list-row tall" key={req.id} style={{ borderLeft: "4px solid var(--blue)" }}>
-                    <span>
-                      <strong>העברת תורנות ({roleObj?.name}) בתאריך {formattedDate}</strong>
-                      <small style={{ fontSize: "13px", marginTop: "4px", color: "var(--ink)" }}>
-                        רופא רשום: <strong>{currentDoc?.name ?? "לא שובץ"}</strong> ➔ מחליף מוצע: <strong>{proposedDoc?.name ?? "ללא"}</strong>
-                      </small>
-                      <small style={{ marginTop: "2px" }}>
-                        הוגש ע"י: {requesterDoc?.name} (תפקיד: {roleLabels[req.requesterRole]})
-                        {req.reason && ` · סיבה: "${req.reason}"`}
-                      </small>
-                    </span>
-                    <div className="row-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <article className={`request-review-card ${kind}`} key={req.id}>
+                    <header className="request-review-header">
+                      <div>
+                        <b>{kind === "exchange" ? "החלפה" : "מסירה"}</b>
+                        <small>הוגש ע"י {requesterDoc?.name ?? "לא ידוע"} · {roleLabels[req.requesterRole]}</small>
+                      </div>
+                      {req.reason ? <small className="request-reason">סיבה: {req.reason}</small> : null}
+                    </header>
+                    <div className="request-flow">
+                      <div className="request-person">
+                        <b>{sourceDoc?.name ?? "לא שובץ"}</b>
+                        <small>{formatShortDate(req.sourceDate ?? req.date)}</small>
+                        <small>{sourceRole?.name ?? req.sourceRoleCode ?? req.roleCode}</small>
+                      </div>
+                      <div className="request-arrow" aria-label={kind === "exchange" ? "החלפה" : "מסירה"}>
+                        <span>{kind === "exchange" ? "⇄" : "←"}</span>
+                        <small>{kind === "exchange" ? "החלפה" : "מסירה"}</small>
+                      </div>
+                      <div className="request-person">
+                        <b>{targetDoc?.name ?? "ללא מחליף"}</b>
+                        <small>{formatShortDate(req.date)}</small>
+                        <small>{targetRole?.name ?? req.roleCode}</small>
+                      </div>
+                    </div>
+                    <div className="request-actions">
                       <input 
                         type="text" 
                         placeholder="הערה לאישור (אופציונלי)..." 
                         value={approveNotes[req.id] ?? ""} 
                         onChange={(e) => setApproveNotes({ ...approveNotes, [req.id]: e.target.value })}
-                        style={{ minHeight: "34px", fontSize: "13px", width: "180px" }}
                       />
                       <button 
                         className="primary" 
-                        style={{ minHeight: "34px", background: "var(--good)", borderColor: "var(--good)" }}
                         onClick={() => onApproveRequest(req.id, approveNotes[req.id] ?? "")}
                       >
                         <Check size={16} />
@@ -2851,14 +2861,13 @@ function PublishedRoster({
                       </button>
                       <button 
                         className="danger" 
-                        style={{ minHeight: "34px" }}
                         onClick={() => onRejectRequest(req.id)}
                       >
                         <X size={16} />
                         דחה
                       </button>
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </div>
@@ -2867,7 +2876,34 @@ function PublishedRoster({
       )}
     </section>
   );
-}function Doctors({
+}
+
+function MobileDayScheduleModal({
+  day,
+  onClose,
+  ...props
+}: Omit<Parameters<typeof MobilePublishedRosterDayCards>[0], "days"> & {
+  day: ReturnType<typeof buildMonthDays>[number] | null;
+  onClose: () => void;
+}) {
+  if (!day) return null;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <section className="modal-panel mobile-modal-panel day-schedule-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="day-schedule-modal-header">
+          <div>
+            <h3>{day.weekdayLabel} · {formatShortDate(day.key)}</h3>
+            <small>הרופאים המשובצים ביום זה</small>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="סגור"><X size={16} /></button>
+        </header>
+        <MobilePublishedRosterDayCards {...props} days={[day]} />
+      </section>
+    </div>
+  );
+}
+
+function Doctors({
   data,
   form,
   setForm,

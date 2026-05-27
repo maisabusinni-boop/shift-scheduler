@@ -546,7 +546,7 @@ textarea {
   border-radius: var(--radius);
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 4px;
 }
 
@@ -656,6 +656,144 @@ textarea {
 .my-schedule-summary b {
   font-size: 28px;
   grid-row: span 2;
+}
+
+.day-schedule-modal {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.day-schedule-modal-header {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.day-schedule-modal-header h3 {
+  margin: 0 0 3px;
+}
+
+.day-schedule-modal-header small {
+  color: var(--muted);
+}
+
+.day-schedule-modal .mobile-roster-list {
+  display: grid;
+  gap: 10px;
+}
+
+.request-review-section {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.request-review-section h3 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.request-review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.request-review-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--blue);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.request-review-card.handoff {
+  border-inline-start-color: var(--good);
+}
+
+.request-review-header {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.request-review-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.request-review-header small,
+.request-person small,
+.request-arrow small,
+.request-reason {
+  color: var(--muted);
+}
+
+.request-reason {
+  max-width: 45%;
+  overflow-wrap: anywhere;
+}
+
+.request-flow {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.request-person {
+  background: var(--header);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  min-height: 84px;
+  padding: 10px;
+  text-align: center;
+}
+
+.request-person b {
+  overflow-wrap: anywhere;
+}
+
+.request-arrow {
+  color: var(--blue);
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 44px;
+  text-align: center;
+}
+
+.request-review-card.handoff .request-arrow {
+  color: var(--good);
+}
+
+.request-arrow span {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.request-actions {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
+}
+
+.request-actions input,
+.request-actions button {
+  min-height: 36px;
+}
+
+.request-actions .primary {
+  background: var(--good);
+  border-color: var(--good);
 }
 
 .roster-table {
@@ -1226,35 +1364,50 @@ textarea {
   }
 
   .topbar {
-    gap: 10px;
-    margin-bottom: 12px;
+    align-items: start;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-bottom: 8px;
   }
 
   .topbar h1 {
-    font-size: 23px;
+    font-size: 18px;
     line-height: 1.15;
+    margin-bottom: 0;
   }
 
   .topbar p {
-    font-size: 13px;
+    display: none;
   }
 
   .month-controls {
-    align-items: stretch;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+    justify-content: flex-end;
+    max-width: 190px;
   }
 
   .month-controls input {
-    flex: 1 1 72px;
+    flex: 0 0 56px;
     min-width: 0;
     width: auto;
+    min-height: 34px;
+    padding: 5px 6px;
   }
 
   .sync-status {
-    flex: 1 1 100%;
+    flex: 0 1 auto;
+    font-size: 12px;
     justify-content: center;
-    white-space: normal;
+    min-height: 32px;
+    padding: 4px 9px;
+    white-space: nowrap;
+  }
+
+  .status {
+    font-size: 12px;
+    padding: 5px 9px;
   }
 
   .notice,
@@ -1267,6 +1420,17 @@ textarea {
 
   .login-strip {
     gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-block: 9px;
+  }
+
+  .login-strip span {
+    display: none;
+  }
+
+  .login-strip button {
+    min-height: 34px;
+    padding: 5px 10px;
   }
 
   .toolbar,
@@ -1371,7 +1535,7 @@ textarea {
   .mobile-schedule-tools {
     display: grid;
     gap: 12px;
-    margin-bottom: 14px;
+    margin-bottom: 0;
   }
 
   .mobile-roster-list {
@@ -1599,6 +1763,47 @@ textarea {
     grid-template-columns: 1fr;
     justify-items: stretch;
     text-align: center;
+  }
+
+  .request-review-section {
+    margin-top: 14px;
+    padding-top: 12px;
+  }
+
+  .request-review-card {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .request-review-header {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .request-reason {
+    max-width: none;
+  }
+
+  .request-flow {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
+  }
+
+  .request-person {
+    min-height: 78px;
+    padding: 9px 7px;
+  }
+
+  .request-arrow {
+    min-width: 36px;
+  }
+
+  .request-arrow span {
+    font-size: 24px;
+  }
+
+  .request-actions {
+    grid-template-columns: 1fr;
   }
 
   .audit-change-person,
