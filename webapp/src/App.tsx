@@ -2794,19 +2794,19 @@ function PublishedRoster({
 
                   let cellStyle: React.CSSProperties = {};
                   if (selected) {
-                    cellStyle = { background: "#dbeafe", border: "2px solid #2563eb", cursor: "pointer" };
+                    cellStyle = { background: "#dbeafe", border: "2px solid #2563eb", color: "#0f172a", cursor: "pointer" };
                   } else if (automaticCandidate) {
-                    cellStyle = { background: "#dcfce7", border: "2px solid #16a34a", cursor: "pointer" };
+                    cellStyle = { background: "#dcfce7", border: "2px solid #16a34a", color: "#0f172a", cursor: "pointer" };
                   } else if (isOver && droppable) {
-                    cellStyle = { background: "#dcfce7", border: "2px dashed #16a34a", transition: "background 0.15s" };
+                    cellStyle = { background: "#dcfce7", border: "2px dashed #16a34a", color: "#0f172a", transition: "background 0.15s" };
                   } else if (isOver && dragSource && !droppable) {
-                    cellStyle = { background: "#fee2e2", border: "2px dashed #dc2626", transition: "background 0.15s" };
+                    cellStyle = { background: "#fee2e2", border: "2px dashed #dc2626", color: "#0f172a", transition: "background 0.15s" };
                   } else if (draggable) {
                     cellStyle = { cursor: "grab" };
                   } else if (clickable) {
-                    cellStyle = { cursor: "pointer", background: "#f0f9ff", border: "1.5px dashed #0284c7" };
+                    cellStyle = { cursor: "pointer", background: "#f0f9ff", border: "1.5px dashed #0284c7", color: "#0f172a" };
                   } else if (automaticSelectable) {
-                    cellStyle = { cursor: "pointer", background: "#f8fafc", border: "1.5px dashed #64748b" };
+                    cellStyle = { cursor: "pointer", background: "#f8fafc", border: "1.5px dashed #64748b", color: "#0f172a" };
                   }
 
                   return (
