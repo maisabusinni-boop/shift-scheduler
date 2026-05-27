@@ -2800,6 +2800,7 @@ function PublishedRoster({
                   const automaticCandidate = automaticReplacementTargets.has(key);
                   const automaticSelectable = changeMode === "auto-exchange" && !selectedExchangeCell && !disabled && !!assignment.doctorId && canDragCell(assignment);
                   const automaticClickable = changeMode === "auto-exchange" && (automaticSelectable || automaticCandidate || selected);
+                  const hasLightInteractionState = selected || automaticCandidate || isOver || clickable || automaticSelectable;
 
                   let cellStyle: React.CSSProperties = {};
                   if (selected) {
@@ -2821,7 +2822,7 @@ function PublishedRoster({
                   return (
                     <td
                       key={roleItem.code}
-                      className={`${disabled ? "disabled" : ""} ${automaticCandidate ? "auto-replacement-candidate" : ""}`}
+                      className={`${disabled ? "disabled" : ""} ${automaticCandidate ? "auto-replacement-candidate" : ""} ${hasLightInteractionState ? "light-interaction-cell" : ""}`}
                       style={cellStyle}
                       onClick={() => {
                         if (automaticClickable) {

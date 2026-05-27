@@ -908,6 +908,13 @@ textarea {
   outline-offset: -3px;
 }
 
+.roster-table td.light-interaction-cell,
+.roster-table td.light-interaction-cell * {
+  color: #0f172a !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
 .disabled {
   background: var(--header);
   color: var(--muted);
