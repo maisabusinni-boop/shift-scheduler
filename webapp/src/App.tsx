@@ -55,6 +55,7 @@ import {
   isOwnDoctor
 } from "@/permissions";
 import { createChangeRequest, nextRequestStatusForDecision } from "@/requests";
+import { buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import {
   downloadCsv,
@@ -85,7 +86,6 @@ import "./styles.css";
 
 type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange";
-type ScheduleLens = "month" | "week" | "mine";
 type SyncState = {
   lastSavedAt: string | null;
   lastSaveError: string | null;
@@ -115,6 +115,22 @@ const roleLabels: Record<AppRole, string> = {
 };
 
 const current = new Date();
+
+function useMediaQuery(query: string) {
+  const getMatches = () => typeof window !== "undefined" && window.matchMedia(query).matches;
+  const [matches, setMatches] = useState(getMatches);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+
+  return matches;
+}
 
 export function App() {
   const [data, setData] = useState<WorkspaceData>(() => loadLocalWorkspace());
@@ -190,6 +206,7 @@ export function App() {
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
   const schedule = workspace.schedules[key];
   const days = useMemo(() => buildMonthDays(year, month), [year, month]);
+  const isMobile = useMediaQuery("(max-width: 760px)");
   const session = useMemo(() => resolveSession(workspace, currentUser), [workspace, currentUser]);
   const role = session.role;
   const appUser = session.status === "recognized" ? session.appUser : null;
@@ -1469,6 +1486,7 @@ export function App() {
                 days={days}
                 role={role}
                 appUser={appUser}
+                isMobile={isMobile}
                 changeRequests={workspace.changeRequests}
                 onSwapCellClick={(mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode) => {
                   setSwapModalCell({ mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode });
@@ -1495,6 +1513,7 @@ export function App() {
                 counts={counts}
                 role={role}
                 ownDoctorId={ownDoctorId || null}
+                isMobile={isMobile}
                 focusCell={focusCell}
                 editable={canEditRoster(role, schedule)}
                 validateCurrent={validateCurrent}
@@ -1825,61 +1844,6 @@ function formatShortDate(date: string) {
   return `${day}/${month}/${year}`;
 }
 
-function scheduleTodayKey(schedule: MonthSchedule) {
-  const now = new Date();
-  if (now.getFullYear() !== schedule.year || now.getMonth() + 1 !== schedule.month) return null;
-  return now.toISOString().slice(0, 10);
-}
-
-function splitMonthWeeks(days: ReturnType<typeof buildMonthDays>) {
-  return days.reduce<ReturnType<typeof buildMonthDays>[]>((weeks, day) => {
-    if (!weeks.length || day.weekday === 0) weeks.push([]);
-    weeks[weeks.length - 1].push(day);
-    return weeks;
-  }, []);
-}
-
-function currentWeekIndexForSchedule(schedule: MonthSchedule, days: ReturnType<typeof buildMonthDays>) {
-  const todayKey = scheduleTodayKey(schedule);
-  const weeks = splitMonthWeeks(days);
-  const currentIndex = todayKey ? weeks.findIndex((week) => week.some((day) => day.key === todayKey)) : -1;
-  return Math.max(0, currentIndex);
-}
-
-function dayAssignmentCount(schedule: MonthSchedule, roles: Role[], date: string) {
-  return roles.reduce((count, role) => {
-    const assignment = schedule.assignments[cellKey(date, role.code)];
-    return count + (assignment?.doctorId || assignment?.pending ? 1 : 0);
-  }, 0);
-}
-
-function doctorHasAssignmentOnDay(schedule: MonthSchedule, roles: Role[], date: string, doctorId: string | null) {
-  if (!doctorId) return false;
-  return roles.some((role) => schedule.assignments[cellKey(date, role.code)]?.doctorId === doctorId);
-}
-
-function doctorAssignmentTotal(schedule: MonthSchedule, roles: Role[], doctorId: string | null) {
-  if (!doctorId) return 0;
-  return Object.entries(schedule.assignments).filter(([key, assignment]) => {
-    if (assignment.doctorId !== doctorId) return false;
-    const roleCode = key.split("|")[1] as RoleCode | undefined;
-    return roles.some((role) => role.code === roleCode);
-  }).length;
-}
-
-function filterDaysByLens(
-  schedule: MonthSchedule,
-  roles: Role[],
-  days: ReturnType<typeof buildMonthDays>,
-  lens: ScheduleLens,
-  weekIndex: number,
-  doctorId: string | null
-) {
-  if (lens === "mine") return days.filter((day) => doctorHasAssignmentOnDay(schedule, roles, day.key, doctorId));
-  if (lens === "week") return splitMonthWeeks(days)[weekIndex] ?? days.slice(0, 7);
-  return days;
-}
-
 function ScheduleLensControls({
   lens,
   setLens,
@@ -1924,30 +1888,28 @@ function ScheduleLensControls({
 }
 
 function MonthScheduleMap({
-  schedule,
-  roles,
   days,
   lens,
-  visibleDays,
-  ownDoctorId,
+  todayKey,
+  visibleDayKeys,
+  assignmentCountsByDay,
+  ownAssignmentDayKeys,
   onSelectDay
 }: {
-  schedule: MonthSchedule;
-  roles: Role[];
   days: ReturnType<typeof buildMonthDays>;
   lens: ScheduleLens;
-  visibleDays: ReturnType<typeof buildMonthDays>;
-  ownDoctorId: string | null;
+  todayKey: string | null;
+  visibleDayKeys: Set<string>;
+  assignmentCountsByDay: Map<string, number>;
+  ownAssignmentDayKeys: Set<string>;
   onSelectDay?: (date: string) => void;
 }) {
-  const visibleKeys = new Set(visibleDays.map((day) => day.key));
-  const todayKey = scheduleTodayKey(schedule);
   return (
     <div className="schedule-month-map" aria-label="מפת חודש">
       {days.map((day) => {
-        const count = dayAssignmentCount(schedule, roles, day.key);
-        const mine = doctorHasAssignmentOnDay(schedule, roles, day.key, ownDoctorId);
-        const inLens = visibleKeys.has(day.key);
+        const count = assignmentCountsByDay.get(day.key) ?? 0;
+        const mine = ownAssignmentDayKeys.has(day.key);
+        const inLens = visibleDayKeys.has(day.key);
         return (
           <button
             type="button"
@@ -1961,7 +1923,7 @@ function MonthScheduleMap({
           </button>
         );
       })}
-      {lens === "mine" && !visibleDays.length ? <p>אין לך שיבוצים בחודש הזה.</p> : null}
+      {lens === "mine" && !visibleDayKeys.size ? <p>אין לך שיבוצים בחודש הזה.</p> : null}
     </div>
   );
 }
@@ -1969,28 +1931,32 @@ function MonthScheduleMap({
 function MobileRosterDayCards({
   schedule,
   roles,
-  doctors,
+  doctorsById,
+  eligibleDoctorsByRole,
   days,
   issueByCell,
   focusCell,
   editable,
   ownDoctorId,
+  ownAssignmentDayKeys,
   updateAssignment
 }: {
   schedule: MonthSchedule;
   roles: Role[];
-  doctors: Doctor[];
+  doctorsById: Map<string, Doctor>;
+  eligibleDoctorsByRole: Map<RoleCode, Doctor[]>;
   days: ReturnType<typeof buildMonthDays>;
   issueByCell: Map<string | undefined, string>;
   focusCell: string | null;
   editable: boolean;
   ownDoctorId: string | null;
+  ownAssignmentDayKeys: Set<string>;
   updateAssignment: (date: string, roleCode: RoleCode, value: string) => void;
 }) {
   return (
     <div className="mobile-roster-list">
       {days.map((day) => (
-        <article className={`mobile-roster-card ${doctorHasAssignmentOnDay(schedule, roles, day.key, ownDoctorId) ? "mine-day" : ""}`} key={day.key}>
+        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""}`} key={day.key}>
           <header className="mobile-roster-card-header">
             <strong>{day.day}</strong>
             <span>{day.weekdayLabel}</span>
@@ -2002,9 +1968,9 @@ function MobileRosterDayCards({
               const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
               const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
               const issue = issueByCell.get(key);
-              const assignedDoc = assignment.doctorId ? doctors.find((doctor) => doctor.id === assignment.doctorId) : null;
+              const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
               const mine = assignment.doctorId === ownDoctorId;
-              const options = doctors.filter((doctor) => isDoctorEligibleForRole(doctor, roleItem)).sort(doctorSortForRole(roleItem));
+              const options = eligibleDoctorsByRole.get(roleItem.code) ?? [];
               const availableOptions = options.filter((doctor) => !isDoctorBlockedForAssignment(schedule, doctor.id, day.key, roleItem.code));
               const blockedOptions = options.filter((doctor) => isDoctorBlockedForAssignment(schedule, doctor.id, day.key, roleItem.code));
               return (
@@ -2047,6 +2013,7 @@ function Roster({
   counts,
   role,
   ownDoctorId,
+  isMobile,
   focusCell,
   editable,
   validateCurrent,
@@ -2063,6 +2030,7 @@ function Roster({
   counts: { assigned: number; pending: number; errors: number; warnings: number };
   role: AppRole;
   ownDoctorId: string | null;
+  isMobile: boolean;
   focusCell: string | null;
   editable: boolean;
   validateCurrent: () => void;
@@ -2072,15 +2040,21 @@ function Roster({
   updateAssignment: (date: string, roleCode: RoleCode, value: string) => void;
   autoSchedule: () => void;
 }) {
-  const weeks = useMemo(() => splitMonthWeeks(days), [days]);
   const [lens, setLens] = useState<ScheduleLens>("month");
   const [weekIndex, setWeekIndex] = useState(() => currentWeekIndexForSchedule(schedule, days));
   useEffect(() => {
     setWeekIndex(currentWeekIndexForSchedule(schedule, days));
   }, [schedule.key, days]);
-  const issueByCell = new Map(schedule.validation.issues.map((issue) => [issue.cellKey, issue.severity]));
-  const visibleDays = filterDaysByLens(schedule, roles, days, lens, weekIndex, ownDoctorId);
-  const mineCount = doctorAssignmentTotal(schedule, roles, ownDoctorId);
+  const issueByCell = useMemo(() => new Map(schedule.validation.issues.map((issue) => [issue.cellKey, issue.severity])), [schedule.validation.issues]);
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor] as const)), [doctors]);
+  const eligibleDoctorsByRole = useMemo(() => new Map(roles.map((roleItem) => [
+    roleItem.code,
+    doctors.filter((doctor) => isDoctorEligibleForRole(doctor, roleItem)).sort(doctorSortForRole(roleItem))
+  ] as const)), [doctors, roles]);
+  const scheduleView = useMemo(() => (
+    isMobile ? buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId) : null
+  ), [days, isMobile, lens, ownDoctorId, roles, schedule, weekIndex]);
+  const todayKey = useMemo(() => scheduleTodayKey(schedule), [schedule]);
   return (
     <section className="panel">
       <div className="toolbar roster-toolbar">
@@ -2121,31 +2095,31 @@ function Roster({
           {schedule.validation.issues.length > 6 ? <span className="hint">+{schedule.validation.issues.length - 6} נוספות</span> : null}
         </div>
       ) : null}
-      <div className="mobile-schedule-tools">
+      {isMobile && scheduleView ? <div className="mobile-schedule-tools">
         <ScheduleLensControls
           lens={lens}
           setLens={setLens}
           weekIndex={weekIndex}
           setWeekIndex={setWeekIndex}
-          weeks={weeks}
-          mineCount={mineCount}
+          weeks={scheduleView.weeks}
+          mineCount={scheduleView.mineCount}
           canUseMine={Boolean(ownDoctorId)}
         />
         <MonthScheduleMap
-          schedule={schedule}
-          roles={roles}
           days={days}
           lens={lens}
-          visibleDays={visibleDays}
-          ownDoctorId={ownDoctorId}
+          todayKey={todayKey}
+          visibleDayKeys={scheduleView.visibleDayKeys}
+          assignmentCountsByDay={scheduleView.assignmentCountsByDay}
+          ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
           onSelectDay={(date) => {
-            const index = weeks.findIndex((week) => week.some((day) => day.key === date));
+            const index = scheduleView.weeks.findIndex((week) => week.some((day) => day.key === date));
             if (index >= 0) setWeekIndex(index);
             setLens("week");
           }}
         />
-      </div>
-      <div className="board-wrap desktop-roster-table">
+      </div> : null}
+      {!isMobile ? <div className="board-wrap desktop-roster-table">
         <table className="roster-table">
           <thead><tr><th className="sticky-date">תאריך</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
           <tbody>
@@ -2157,7 +2131,7 @@ function Roster({
                   const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
                   const disabled = isFridayOnlyRole(role.code) && !day.isFriday;
                   const issue = issueByCell.get(key);
-                  const options = doctors.filter((doctor) => isDoctorEligibleForRole(doctor, role)).sort(doctorSortForRole(role));
+                  const options = eligibleDoctorsByRole.get(role.code) ?? [];
                   const availableOptions = options.filter((doctor) => !isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
                   const blockedOptions = options.filter((doctor) => isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
                   return (
@@ -2178,18 +2152,20 @@ function Roster({
             ))}
           </tbody>
         </table>
-      </div>
-      <MobileRosterDayCards
+      </div> : null}
+      {isMobile && scheduleView ? <MobileRosterDayCards
         schedule={schedule}
         roles={roles}
-        doctors={doctors}
-        days={visibleDays}
+        doctorsById={doctorsById}
+        eligibleDoctorsByRole={eligibleDoctorsByRole}
+        days={scheduleView.visibleDays}
         issueByCell={issueByCell}
         focusCell={focusCell}
         editable={editable}
         ownDoctorId={ownDoctorId}
+        ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
         updateAssignment={updateAssignment}
-      />
+      /> : null}
     </section>
   );
 }
@@ -2400,11 +2376,12 @@ function requestStatusLabel(status: ChangeRequest["status"]) {
 function MobilePublishedRosterDayCards({
   schedule,
   roles,
-  doctors,
+  doctorsById,
   days,
   changeMode,
   selectedExchangeCell,
   ownDoctorId,
+  ownAssignmentDayKeys,
   canUseCell,
   canExchangeCells,
   onSwapCellClick,
@@ -2413,11 +2390,12 @@ function MobilePublishedRosterDayCards({
 }: {
   schedule: MonthSchedule;
   roles: Role[];
-  doctors: Doctor[];
+  doctorsById: Map<string, Doctor>;
   days: ReturnType<typeof buildMonthDays>;
   changeMode: PublishedChangeMode | null;
   selectedExchangeCell: { date: string; roleCode: RoleCode; doctorId: string } | null;
   ownDoctorId: string | null;
+  ownAssignmentDayKeys: Set<string>;
   canUseCell: (assignment: Assignment) => boolean;
   canExchangeCells: (source: { date: string; roleCode: RoleCode; doctorId: string }, targetDate: string, targetRoleCode: RoleCode) => boolean;
   onSwapCellClick: (mode: PublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
@@ -2452,7 +2430,7 @@ function MobilePublishedRosterDayCards({
   return (
     <div className="mobile-roster-list">
       {days.map((day) => (
-        <article className={`mobile-roster-card ${doctorHasAssignmentOnDay(schedule, roles, day.key, ownDoctorId) ? "mine-day" : ""}`} key={day.key}>
+        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""}`} key={day.key}>
           <header className="mobile-roster-card-header">
             <strong>{day.day}</strong>
             <span>{day.weekdayLabel}</span>
@@ -2463,7 +2441,7 @@ function MobilePublishedRosterDayCards({
               const key = cellKey(day.key, roleItem.code);
               const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
               const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
-              const assignedDoc = assignment.doctorId ? doctors.find((doctor) => doctor.id === assignment.doctorId) : null;
+              const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
               const selected = selectedExchangeCell?.date === day.key && selectedExchangeCell.roleCode === roleItem.code;
               const tappable = !disabled && !!assignment.doctorId && canUseCell(assignment);
               const mine = assignment.doctorId === ownDoctorId;
@@ -2502,6 +2480,7 @@ function PublishedRoster({
   days,
   role,
   appUser,
+  isMobile,
   changeRequests,
   onSwapCellClick,
   onApproveRequest,
@@ -2513,6 +2492,7 @@ function PublishedRoster({
   days: ReturnType<typeof buildMonthDays>;
   role: AppRole;
   appUser: AppUser | null;
+  isMobile: boolean;
   changeRequests: ChangeRequest[];
   onSwapCellClick: (mode: PublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
   onApproveRequest: (id: string, reason: string) => Promise<void>;
@@ -2525,7 +2505,6 @@ function PublishedRoster({
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [exchangeMessage, setExchangeMessage] = useState("");
   const ownDoctorId = appUser?.doctorId ?? null;
-  const weeks = useMemo(() => splitMonthWeeks(days), [days]);
   const [lens, setLens] = useState<ScheduleLens>("month");
   const [weekIndex, setWeekIndex] = useState(() => currentWeekIndexForSchedule(schedule, days));
 
@@ -2536,13 +2515,17 @@ function PublishedRoster({
   const pendingRequests = useMemo(() => {
     return changeRequests.filter(r => r.scheduleKey === schedule.key && r.status === "submitted");
   }, [changeRequests, schedule.key]);
-  const visibleDays = filterDaysByLens(schedule, roles, days, lens, weekIndex, ownDoctorId);
-  const mineCount = doctorAssignmentTotal(schedule, roles, ownDoctorId);
+  const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor] as const)), [doctors]);
+  const rolesByCode = useMemo(() => new Map(roles.map((roleItem) => [roleItem.code, roleItem] as const)), [roles]);
+  const scheduleView = useMemo(() => (
+    isMobile ? buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId) : null
+  ), [days, isMobile, lens, ownDoctorId, roles, schedule, weekIndex]);
+  const todayKey = useMemo(() => scheduleTodayKey(schedule), [schedule]);
 
   function canDragCell(assignment: Assignment): boolean {
     if (schedule.status !== "published") return false;
     if (!assignment.doctorId) return false;
-    const assignedDoc = doctors.find(d => d.id === assignment.doctorId);
+    const assignedDoc = doctorsById.get(assignment.doctorId);
     if (!assignedDoc) return false;
     if (role === "senior-planner") return true;
     if (role === "senior") return assignedDoc.group === "senior";
@@ -2552,11 +2535,11 @@ function PublishedRoster({
 
   function canDropOnCell(targetDate: string, targetRoleCode: RoleCode): boolean {
     if (changeMode !== "exchange" || !dragSource) return false;
-    const sourceDoc = doctors.find(d => d.id === dragSource.doctorId);
-    const targetRole = roles.find(r => r.code === targetRoleCode);
-    const sourceRole = roles.find(r => r.code === dragSource.roleCode);
+    const sourceDoc = doctorsById.get(dragSource.doctorId);
+    const targetRole = rolesByCode.get(targetRoleCode);
+    const sourceRole = rolesByCode.get(dragSource.roleCode);
     const targetAssignment = schedule.assignments[cellKey(targetDate, targetRoleCode)];
-    const targetDoc = targetAssignment?.doctorId ? doctors.find(d => d.id === targetAssignment.doctorId) : null;
+    const targetDoc = targetAssignment?.doctorId ? doctorsById.get(targetAssignment.doctorId) : null;
     if (!sourceDoc || !targetRole || !targetDoc) return false;
     if (targetDate === dragSource.date && targetRoleCode === dragSource.roleCode) return false;
     if (!isDoctorEligibleForRole(sourceDoc, targetRole)) return false;
@@ -2570,11 +2553,11 @@ function PublishedRoster({
   }
 
   function canExchangeCells(source: { date: string; roleCode: RoleCode; doctorId: string }, targetDate: string, targetRoleCode: RoleCode) {
-    const sourceDoc = doctors.find(d => d.id === source.doctorId);
+    const sourceDoc = doctorsById.get(source.doctorId);
     const targetAssignment = schedule.assignments[cellKey(targetDate, targetRoleCode)];
-    const targetDoc = targetAssignment?.doctorId ? doctors.find(d => d.id === targetAssignment.doctorId) : null;
-    const sourceRole = roles.find(r => r.code === source.roleCode);
-    const targetRole = roles.find(r => r.code === targetRoleCode);
+    const targetDoc = targetAssignment?.doctorId ? doctorsById.get(targetAssignment.doctorId) : null;
+    const sourceRole = rolesByCode.get(source.roleCode);
+    const targetRole = rolesByCode.get(targetRoleCode);
     if (!sourceDoc || !targetDoc || !sourceRole || !targetRole) return false;
     if (source.date === targetDate && source.roleCode === targetRoleCode) return false;
     return isDoctorEligibleForRole(sourceDoc, targetRole) && isDoctorEligibleForRole(targetDoc, sourceRole);
@@ -2654,10 +2637,10 @@ function PublishedRoster({
         </div>
       )}
 
-      <div className="mobile-schedule-tools">
+      {isMobile && scheduleView ? <div className="mobile-schedule-tools">
         <div className="my-schedule-summary">
           <span>התורנויות שלי</span>
-          <b>{mineCount}</b>
+          <b>{scheduleView.mineCount}</b>
           <small>{ownDoctorId ? "בחודש הפעיל" : "המשתמש לא מקושר לרופא"}</small>
         </div>
         <ScheduleLensControls
@@ -2665,26 +2648,26 @@ function PublishedRoster({
           setLens={setLens}
           weekIndex={weekIndex}
           setWeekIndex={setWeekIndex}
-          weeks={weeks}
-          mineCount={mineCount}
+          weeks={scheduleView.weeks}
+          mineCount={scheduleView.mineCount}
           canUseMine={Boolean(ownDoctorId)}
         />
         <MonthScheduleMap
-          schedule={schedule}
-          roles={roles}
           days={days}
           lens={lens}
-          visibleDays={visibleDays}
-          ownDoctorId={ownDoctorId}
+          todayKey={todayKey}
+          visibleDayKeys={scheduleView.visibleDayKeys}
+          assignmentCountsByDay={scheduleView.assignmentCountsByDay}
+          ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
           onSelectDay={(date) => {
-            const index = weeks.findIndex((week) => week.some((day) => day.key === date));
+            const index = scheduleView.weeks.findIndex((week) => week.some((day) => day.key === date));
             if (index >= 0) setWeekIndex(index);
             setLens("week");
           }}
         />
-      </div>
+      </div> : null}
 
-      <div className="board-wrap desktop-roster-table">
+      {!isMobile ? <div className="board-wrap desktop-roster-table">
         <table className="roster-table">
           <thead>
             <tr>
@@ -2710,7 +2693,7 @@ function PublishedRoster({
                   const key = cellKey(day.key, roleItem.code);
                   const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
                   const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
-                  const assignedDoc = assignment.doctorId ? doctors.find(d => d.id === assignment.doctorId) : null;
+                  const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
 
                   const draggable = changeMode === "exchange" && !disabled && canDragCell(assignment);
                   const droppable = !disabled && canDropOnCell(day.key, roleItem.code);
@@ -2805,21 +2788,22 @@ function PublishedRoster({
             ))}
           </tbody>
         </table>
-      </div>
-      <MobilePublishedRosterDayCards
+      </div> : null}
+      {isMobile && scheduleView ? <MobilePublishedRosterDayCards
         schedule={schedule}
         roles={roles}
-        doctors={doctors}
-        days={visibleDays}
+        doctorsById={doctorsById}
+        days={scheduleView.visibleDays}
         changeMode={changeMode}
         selectedExchangeCell={selectedExchangeCell}
         ownDoctorId={ownDoctorId}
+        ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
         canUseCell={canUseCell}
         canExchangeCells={canExchangeCells}
         onSwapCellClick={onSwapCellClick}
         setSelectedExchangeCell={setSelectedExchangeCell}
         setExchangeMessage={setExchangeMessage}
-      />
+      /> : null}
 
       {canReviewRequests(role) && (
         <div style={{ marginTop: "32px", borderTop: "1px solid var(--line)", paddingTop: "20px" }}>

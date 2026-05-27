@@ -1218,7 +1218,7 @@ textarea {
 
 @media (max-width: 760px) {
   body {
-    font-size: 16px;
+    font-size: 14px;
   }
 
   .shell {
@@ -1236,7 +1236,7 @@ textarea {
   }
 
   .topbar p {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .month-controls {
@@ -1278,7 +1278,7 @@ textarea {
 
   .toolbar h2,
   .panel h2 {
-    font-size: 21px;
+    font-size: 19px;
   }
 
   .actions,
@@ -1376,7 +1376,7 @@ textarea {
 
   .mobile-roster-list {
     display: grid;
-    gap: 14px;
+    gap: 10px;
   }
 
   .mobile-roster-card {
@@ -1399,16 +1399,15 @@ textarea {
     display: grid;
     gap: 3px 8px;
     grid-template-columns: auto 1fr auto;
-    padding: 12px 14px;
+    padding: 10px 12px;
   }
 
   .mobile-roster-card-header strong {
-    font-size: 24px;
+    font-size: 20px;
   }
 
   .mobile-roster-card-header small {
     color: var(--muted);
-    font-size: 14px;
   }
 
   .mobile-roster-rows {
@@ -1426,8 +1425,8 @@ textarea {
     gap: 10px;
     grid-template-columns: minmax(0, 1fr) minmax(120px, 0.72fr);
     justify-content: stretch;
-    min-height: 68px;
-    padding: 12px 14px;
+    min-height: 58px;
+    padding: 10px 12px;
     text-align: right;
     width: 100%;
   }
@@ -1475,19 +1474,19 @@ textarea {
 
   .mobile-roster-row-meta {
     display: grid;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
   }
 
   .mobile-roster-row-meta .role-title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 800;
     justify-content: flex-start;
   }
 
   .mobile-roster-row-meta small {
     color: var(--muted);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
     overflow-wrap: anywhere;
   }
@@ -1498,8 +1497,8 @@ textarea {
   }
 
   .mobile-roster-row-action select {
-    font-size: 15px;
-    min-height: 46px;
+    font-size: 14px;
+    min-height: 44px;
     width: 100%;
   }
 
@@ -1513,7 +1512,7 @@ textarea {
     font-size: 13px;
     font-weight: 700;
     justify-content: center;
-    min-height: 42px;
+    min-height: 38px;
     padding: 6px 8px;
   }
 
