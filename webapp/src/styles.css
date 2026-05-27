@@ -531,6 +531,133 @@ textarea {
   display: none;
 }
 
+.mobile-schedule-tools {
+  display: none;
+}
+
+.schedule-lens-bar {
+  display: grid;
+  gap: 10px;
+}
+
+.segmented-control {
+  background: var(--header);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.segmented-control button {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 8px;
+}
+
+.segmented-control button.active {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--blue);
+  font-weight: 800;
+  box-shadow: var(--shadow);
+}
+
+.week-stepper {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr auto;
+  text-align: center;
+}
+
+.week-stepper button {
+  min-height: 38px;
+  padding-inline: 12px;
+}
+
+.schedule-month-map {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.schedule-month-map button {
+  align-content: center;
+  border-radius: 8px;
+  display: grid;
+  gap: 1px;
+  min-height: 56px;
+  padding: 5px 3px;
+  position: relative;
+}
+
+.schedule-month-map button:not(.in-lens) {
+  opacity: 0.45;
+}
+
+.schedule-month-map button.today {
+  border-color: var(--blue);
+}
+
+.schedule-month-map button.mine {
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.schedule-month-map b {
+  font-size: 17px;
+}
+
+.schedule-month-map span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.schedule-month-map i {
+  background: var(--header);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  justify-self: center;
+  min-height: 16px;
+  min-width: 18px;
+  padding: 0 5px;
+}
+
+.schedule-month-map p {
+  color: var(--muted);
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+.my-schedule-summary {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.12), rgba(37, 99, 235, 0.09));
+  border: 1px solid rgba(22, 163, 74, 0.22);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 2px 10px;
+  grid-template-columns: 1fr auto;
+  padding: 12px 14px;
+}
+
+.my-schedule-summary span,
+.my-schedule-summary small {
+  color: var(--muted);
+}
+
+.my-schedule-summary b {
+  font-size: 28px;
+  grid-row: span 2;
+}
+
 .roster-table {
   border-collapse: separate;
   border-spacing: 0;
@@ -1091,7 +1218,7 @@ textarea {
 
 @media (max-width: 760px) {
   body {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .shell {
@@ -1109,7 +1236,7 @@ textarea {
   }
 
   .topbar p {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .month-controls {
@@ -1151,7 +1278,7 @@ textarea {
 
   .toolbar h2,
   .panel h2 {
-    font-size: 19px;
+    font-size: 21px;
   }
 
   .actions,
@@ -1241,9 +1368,15 @@ textarea {
     display: none;
   }
 
+  .mobile-schedule-tools {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
   .mobile-roster-list {
     display: grid;
-    gap: 10px;
+    gap: 14px;
   }
 
   .mobile-roster-card {
@@ -1254,6 +1387,11 @@ textarea {
     overflow: hidden;
   }
 
+  .mobile-roster-card.mine-day {
+    border-color: rgba(22, 163, 74, 0.38);
+    box-shadow: 0 10px 24px rgba(22, 163, 74, 0.1);
+  }
+
   .mobile-roster-card-header {
     align-items: center;
     background: var(--header);
@@ -1261,15 +1399,16 @@ textarea {
     display: grid;
     gap: 3px 8px;
     grid-template-columns: auto 1fr auto;
-    padding: 10px 12px;
+    padding: 12px 14px;
   }
 
   .mobile-roster-card-header strong {
-    font-size: 20px;
+    font-size: 24px;
   }
 
   .mobile-roster-card-header small {
     color: var(--muted);
+    font-size: 14px;
   }
 
   .mobile-roster-rows {
@@ -1287,8 +1426,8 @@ textarea {
     gap: 10px;
     grid-template-columns: minmax(0, 1fr) minmax(120px, 0.72fr);
     justify-content: stretch;
-    min-height: 58px;
-    padding: 10px 12px;
+    min-height: 68px;
+    padding: 12px 14px;
     text-align: right;
     width: 100%;
   }
@@ -1303,6 +1442,11 @@ textarea {
 
   .mobile-roster-row.warning {
     background: rgba(217, 119, 6, 0.07);
+  }
+
+  .mobile-roster-row.mine-assignment {
+    background: rgba(22, 163, 74, 0.09);
+    border-inline-start: 4px solid var(--good);
   }
 
   .mobile-roster-row.focused,
@@ -1331,12 +1475,20 @@ textarea {
 
   .mobile-roster-row-meta {
     display: grid;
-    gap: 4px;
+    gap: 6px;
     min-width: 0;
+  }
+
+  .mobile-roster-row-meta .role-title {
+    font-size: 16px;
+    font-weight: 800;
+    justify-content: flex-start;
   }
 
   .mobile-roster-row-meta small {
     color: var(--muted);
+    font-size: 15px;
+    font-weight: 700;
     overflow-wrap: anywhere;
   }
 
@@ -1346,6 +1498,8 @@ textarea {
   }
 
   .mobile-roster-row-action select {
+    font-size: 15px;
+    min-height: 46px;
     width: 100%;
   }
 
@@ -1359,7 +1513,7 @@ textarea {
     font-size: 13px;
     font-weight: 700;
     justify-content: center;
-    min-height: 38px;
+    min-height: 42px;
     padding: 6px 8px;
   }
 
