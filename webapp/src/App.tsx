@@ -2800,7 +2800,7 @@ function PublishedRoster({
                   const automaticCandidate = automaticReplacementTargets.has(key);
                   const automaticSelectable = changeMode === "auto-exchange" && !selectedExchangeCell && !disabled && !!assignment.doctorId && canDragCell(assignment);
                   const automaticClickable = changeMode === "auto-exchange" && (automaticSelectable || automaticCandidate || selected);
-                  const hasLightInteractionState = selected || automaticCandidate || isOver || clickable || automaticSelectable;
+                  const hasLightInteractionState = selected || automaticCandidate || isOver;
 
                   let cellStyle: React.CSSProperties = {};
                   if (selected) {
@@ -2814,9 +2814,9 @@ function PublishedRoster({
                   } else if (draggable) {
                     cellStyle = { cursor: "grab" };
                   } else if (clickable) {
-                    cellStyle = { cursor: "pointer", background: "#f0f9ff", border: "1.5px dashed #0284c7", color: "#0f172a" };
+                    cellStyle = { cursor: "pointer" };
                   } else if (automaticSelectable) {
-                    cellStyle = { cursor: "pointer", background: "#f8fafc", border: "1.5px dashed #64748b", color: "#0f172a" };
+                    cellStyle = { cursor: "pointer" };
                   }
 
                   return (
@@ -2877,17 +2877,8 @@ function PublishedRoster({
                           {draggable && !dragSource && (
                             <span style={{ fontSize: "10px", color: "#94a3b8" }}>⠇ גרור</span>
                           )}
-                          {clickable && (
-                            <span style={{ fontSize: "10px", color: "#0284c7" }}>לחץ למסירה</span>
-                          )}
-                          {changeMode === "exchange" && usable && !draggable && (
-                            <span style={{ fontSize: "10px", color: "#0284c7" }}>לחץ פעמיים</span>
-                          )}
-                          {changeMode === "auto-exchange" && automaticSelectable && (
-                            <span style={{ fontSize: "10px", color: "#64748b" }}>בחר מקור</span>
-                          )}
                           {automaticCandidate && (
-                            <span style={{ fontSize: "10px", color: "#16a34a" }}>החלפה אפשרית</span>
+                            <span className="cell-action-note">החלפה אפשרית</span>
                           )}
                         </div>
                       ) : (

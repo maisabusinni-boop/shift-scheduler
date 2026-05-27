@@ -915,6 +915,13 @@ textarea {
   text-shadow: none !important;
 }
 
+.roster-table .cell-action-note {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
 .disabled {
   background: var(--header);
   color: var(--muted);
