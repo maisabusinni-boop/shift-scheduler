@@ -535,12 +535,6 @@ textarea {
   display: none;
 }
 
-.published-schedule-tools {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
 .schedule-lens-bar {
   display: grid;
   gap: 10px;
@@ -641,34 +635,6 @@ textarea {
   grid-column: 1 / -1;
   margin: 4px 0 0;
   text-align: center;
-}
-
-@media (min-width: 761px) {
-  .published-schedule-tools {
-    align-items: start;
-    grid-template-columns: 180px 220px minmax(0, 1fr);
-  }
-
-  .published-schedule-tools .my-schedule-summary {
-    min-height: 100%;
-  }
-
-  .published-schedule-tools .schedule-month-map {
-    gap: 4px;
-  }
-
-  .published-schedule-tools .schedule-month-map button {
-    min-height: 42px;
-    padding: 4px 2px;
-  }
-
-  .published-schedule-tools .schedule-month-map b {
-    font-size: 15px;
-  }
-
-  .published-schedule-tools .schedule-month-map span {
-    font-size: 11px;
-  }
 }
 
 .my-schedule-summary {
@@ -924,6 +890,22 @@ textarea {
 
 .roster-table td.focused {
   box-shadow: inset 0 0 0 3px var(--blue);
+}
+
+.roster-table tr.own-assignment-day th,
+.roster-table tr.own-assignment-day td {
+  background: rgba(22, 163, 74, 0.08);
+  box-shadow: inset 0 2px 0 rgba(22, 163, 74, 0.55), inset 0 -2px 0 rgba(22, 163, 74, 0.55);
+}
+
+.roster-table tr.own-assignment-day .sticky-date {
+  background: rgba(22, 163, 74, 0.16) !important;
+  border-inline-start: 4px solid var(--good);
+}
+
+.roster-table td.auto-replacement-candidate {
+  outline: 3px solid var(--good);
+  outline-offset: -3px;
 }
 
 .disabled {

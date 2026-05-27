@@ -84,7 +84,8 @@ import { validateSchedule } from "@/validation";
 import "./styles.css";
 
 type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
-type PublishedChangeMode = "handoff" | "exchange";
+type PublishedChangeMode = "handoff" | "exchange" | "auto-exchange";
+type AppliedPublishedChangeMode = Exclude<PublishedChangeMode, "auto-exchange">;
 type SyncState = {
   lastSavedAt: string | null;
   lastSaveError: string | null;
@@ -187,7 +188,7 @@ export function App() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [importText, setImportText] = useState("");
   const [swapModalCell, setSwapModalCell] = useState<{
-    mode: PublishedChangeMode;
+    mode: AppliedPublishedChangeMode;
     date: string;
     roleCode: RoleCode;
     giverDoctorId: string;
@@ -1485,6 +1486,7 @@ export function App() {
                 days={days}
                 role={role}
                 appUser={appUser}
+                currentUser={currentUser}
                 isMobile={isMobile}
                 changeRequests={workspace.changeRequests}
                 onSwapCellClick={(mode, date, roleCode, giverDoctorId, targetDoctorId, sourceDate, sourceRoleCode) => {
@@ -2386,7 +2388,7 @@ function MobilePublishedRosterDayCards({
   ownAssignmentDayKeys: Set<string>;
   canUseCell: (assignment: Assignment) => boolean;
   canExchangeCells: (source: { date: string; roleCode: RoleCode; doctorId: string }, targetDate: string, targetRoleCode: RoleCode) => boolean;
-  onSwapCellClick: (mode: PublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
+  onSwapCellClick: (mode: AppliedPublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
   setSelectedExchangeCell: (cell: { date: string; roleCode: RoleCode; doctorId: string } | null) => void;
   setExchangeMessage: (message: string) => void;
 }) {
@@ -2466,6 +2468,7 @@ function PublishedRoster({
   days,
   role,
   appUser,
+  currentUser,
   isMobile,
   changeRequests,
   onSwapCellClick,
@@ -2478,9 +2481,10 @@ function PublishedRoster({
   days: ReturnType<typeof buildMonthDays>;
   role: AppRole;
   appUser: AppUser | null;
+  currentUser: SessionUser;
   isMobile: boolean;
   changeRequests: ChangeRequest[];
-  onSwapCellClick: (mode: PublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
+  onSwapCellClick: (mode: AppliedPublishedChangeMode, date: string, roleCode: RoleCode, giverDoctorId: string, targetDoctorId?: string, sourceDate?: string, sourceRoleCode?: RoleCode) => void;
   onApproveRequest: (id: string, reason: string) => Promise<void>;
   onRejectRequest: (id: string) => void;
 }) {
@@ -2490,7 +2494,15 @@ function PublishedRoster({
   const [dragSource, setDragSource] = useState<{ date: string; roleCode: RoleCode; doctorId: string } | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [exchangeMessage, setExchangeMessage] = useState("");
-  const ownDoctorId = appUser?.doctorId ?? null;
+  const ownDoctorId = appUser?.doctorId ??
+    doctors.find((doctor) => {
+      const doctorName = doctor.name.replace(/^ד["״']?ר\s*/, "").trim();
+      return [appUser?.name, currentUser.name].some((name) => {
+        const normalizedName = name?.replace(/^ד["״']?ר\s*/, "").trim();
+        return Boolean(normalizedName && (normalizedName === doctorName || doctorName.includes(normalizedName) || normalizedName.includes(doctorName)));
+      });
+    })?.id ??
+    null;
   const [lens, setLens] = useState<ScheduleLens>("month");
   const [weekIndex, setWeekIndex] = useState(() => currentWeekIndexForSchedule(schedule, days));
   const [selectedMobileDayKey, setSelectedMobileDayKey] = useState<string | null>(null);
@@ -2509,9 +2521,56 @@ function PublishedRoster({
   const doctorsById = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor] as const)), [doctors]);
   const rolesByCode = useMemo(() => new Map(roles.map((roleItem) => [roleItem.code, roleItem] as const)), [roles]);
   const scheduleView = useMemo(() => (
-    buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId)
-  ), [days, lens, ownDoctorId, roles, schedule, weekIndex]);
+    isMobile ? buildScheduleView(schedule, roles, days, lens, weekIndex, ownDoctorId) : null
+  ), [days, isMobile, lens, ownDoctorId, roles, schedule, weekIndex]);
   const todayKey = useMemo(() => scheduleTodayKey(schedule), [schedule]);
+  const ownAssignmentDayKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const currentNames = [appUser?.name, currentUser.name]
+      .map((name) => name?.replace(/^ד["״']?ר\s*/, "").trim())
+      .filter((name): name is string => Boolean(name));
+    Object.entries(schedule.assignments).forEach(([assignmentKey, assignment]) => {
+      if (assignment.pending || !assignment.doctorId) return;
+      const assignedDoctor = doctorsById.get(assignment.doctorId);
+      const assignedName = assignedDoctor?.name.replace(/^ד["״']?ר\s*/, "").trim();
+      const sameLinkedDoctor = ownDoctorId && assignment.doctorId === ownDoctorId;
+      const sameNamedDoctor = Boolean(assignedName && currentNames.some((name) => name === assignedName || assignedName.includes(name) || name.includes(assignedName)));
+      if (!sameLinkedDoctor && !sameNamedDoctor) return;
+      const [date] = assignmentKey.split("|");
+      keys.add(date);
+    });
+    return keys;
+  }, [appUser?.name, currentUser.name, doctorsById, ownDoctorId, schedule.assignments]);
+  const automaticReplacementTargets = useMemo(() => {
+    if (changeMode !== "auto-exchange" || !selectedExchangeCell) return new Set<string>();
+    const sourceAssignment = schedule.assignments[cellKey(selectedExchangeCell.date, selectedExchangeCell.roleCode)];
+    if (!sourceAssignment?.doctorId || sourceAssignment.pending) return new Set<string>();
+
+    const baseErrorIds = new Set(validateSchedule(schedule, roles, doctors).filter((issue) => issue.severity === "error").map((issue) => issue.id));
+    const targets = new Set<string>();
+
+    days.forEach((day) => {
+      const targetKey = cellKey(day.key, selectedExchangeCell.roleCode);
+      if (day.key === selectedExchangeCell.date) return;
+      const targetAssignment = schedule.assignments[targetKey];
+      if (!targetAssignment?.doctorId || targetAssignment.pending) return;
+      if (!canExchangeCells(selectedExchangeCell, day.key, selectedExchangeCell.roleCode)) return;
+
+      const simulatedSchedule: MonthSchedule = {
+        ...schedule,
+        assignments: {
+          ...schedule.assignments,
+          [cellKey(selectedExchangeCell.date, selectedExchangeCell.roleCode)]: { doctorId: targetAssignment.doctorId, pending: false },
+          [targetKey]: { doctorId: sourceAssignment.doctorId, pending: false }
+        }
+      };
+      const newErrors = validateSchedule(simulatedSchedule, roles, doctors)
+        .filter((issue) => issue.severity === "error" && !baseErrorIds.has(issue.id));
+      if (!newErrors.length) targets.add(targetKey);
+    });
+
+    return targets;
+  }, [changeMode, days, doctors, roles, schedule, selectedExchangeCell]);
 
   function canDragCell(assignment: Assignment): boolean {
     if (schedule.status !== "published") return false;
@@ -2576,6 +2635,27 @@ function PublishedRoster({
     setExchangeMessage("");
   }
 
+  function handleAutomaticReplacementClick(date: string, roleCode: RoleCode, assignment: Assignment) {
+    if (changeMode !== "auto-exchange" || !assignment.doctorId || assignment.pending) return;
+    const key = cellKey(date, roleCode);
+    if (!selectedExchangeCell) {
+      if (!canDragCell(assignment)) return;
+      setSelectedExchangeCell({ date, roleCode, doctorId: assignment.doctorId });
+      setExchangeMessage("נבחר שיבוץ מקור. תאים מתאימים באותה עמודה מסומנים בירוק.");
+      return;
+    }
+    if (selectedExchangeCell.date === date && selectedExchangeCell.roleCode === roleCode) {
+      setSelectedExchangeCell(null);
+      setExchangeMessage("");
+      return;
+    }
+    if (!automaticReplacementTargets.has(key)) {
+      setExchangeMessage("התא הזה לא מתאים להחלפה אוטומטית לפי הכללים והאילוצים.");
+      return;
+    }
+    onSwapCellClick("exchange", date, roleCode, selectedExchangeCell.doctorId, assignment.doctorId, selectedExchangeCell.date, selectedExchangeCell.roleCode);
+  }
+
   return (
     <section className="panel">
       <div className="toolbar roster-toolbar">
@@ -2610,6 +2690,20 @@ function PublishedRoster({
                 <RefreshCw size={17} />
                 {changeMode === "exchange" ? "בטל החלפה" : "החלפה"}
               </button>
+              {!isMobile ? (
+                <button
+                  className={changeMode === "auto-exchange" ? "primary" : ""}
+                  onClick={() => {
+                    setChangeMode(changeMode === "auto-exchange" ? null : "auto-exchange");
+                    setSelectedExchangeCell(null);
+                    setDragSource(null);
+                    setExchangeMessage("");
+                  }}
+                >
+                  <LocateFixed size={17} />
+                  {changeMode === "auto-exchange" ? "בטל החלפה אוטומטית" : "החלפה אוטומטית"}
+                </button>
+              ) : null}
             </>
           )}
         </div>
@@ -2619,6 +2713,8 @@ function PublishedRoster({
         <div className="notice" style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af", marginBottom: "12px", fontSize: "14px" }}>
           {changeMode === "handoff" ? (
             <><strong>מסירה:</strong> לחץ על תא משובץ כדי לבחור רופא שיקבל את התורנות.</>
+          ) : changeMode === "auto-exchange" ? (
+            <><strong>החלפה אוטומטית:</strong> לחץ על שיבוץ בטבלה. המערכת תסמן החלפות אפשריות באותה עמודה שמכבדות אילוצים וכללי שיבוץ.</>
           ) : (
             <><strong>החלפה:</strong> גרור בין שני תאים משובצים, או לחץ פעמיים על תא ראשון ואז פעמיים על תא שני.</>
           )}
@@ -2628,7 +2724,7 @@ function PublishedRoster({
         </div>
       )}
 
-      {scheduleView ? <div className="mobile-schedule-tools published-schedule-tools">
+      {isMobile && scheduleView ? <div className="mobile-schedule-tools">
         <div className="my-schedule-summary">
           <span>התורנויות שלי</span>
           <b>{scheduleView.mineCount}</b>
@@ -2675,7 +2771,7 @@ function PublishedRoster({
           </thead>
           <tbody>
             {days.map((day) => (
-              <tr key={day.key}>
+              <tr className={ownAssignmentDayKeys.has(day.key) ? "own-assignment-day" : ""} key={day.key}>
                 <th className="sticky-date">
                   <strong>{day.day}</strong>
                   <span>{day.weekdayLabel}</span>
@@ -2692,10 +2788,15 @@ function PublishedRoster({
                   const usable = !disabled && canUseCell(assignment);
                   const clickable = changeMode === "handoff" && usable;
                   const selected = selectedExchangeCell?.date === day.key && selectedExchangeCell.roleCode === roleItem.code;
+                  const automaticCandidate = automaticReplacementTargets.has(key);
+                  const automaticSelectable = changeMode === "auto-exchange" && !selectedExchangeCell && !disabled && !!assignment.doctorId && canDragCell(assignment);
+                  const automaticClickable = changeMode === "auto-exchange" && (automaticSelectable || automaticCandidate || selected);
 
                   let cellStyle: React.CSSProperties = {};
                   if (selected) {
                     cellStyle = { background: "#dbeafe", border: "2px solid #2563eb", cursor: "pointer" };
+                  } else if (automaticCandidate) {
+                    cellStyle = { background: "#dcfce7", border: "2px solid #16a34a", cursor: "pointer" };
                   } else if (isOver && droppable) {
                     cellStyle = { background: "#dcfce7", border: "2px dashed #16a34a", transition: "background 0.15s" };
                   } else if (isOver && dragSource && !droppable) {
@@ -2704,14 +2805,20 @@ function PublishedRoster({
                     cellStyle = { cursor: "grab" };
                   } else if (clickable) {
                     cellStyle = { cursor: "pointer", background: "#f0f9ff", border: "1.5px dashed #0284c7" };
+                  } else if (automaticSelectable) {
+                    cellStyle = { cursor: "pointer", background: "#f8fafc", border: "1.5px dashed #64748b" };
                   }
 
                   return (
                     <td
                       key={roleItem.code}
-                      className={disabled ? "disabled" : ""}
+                      className={`${disabled ? "disabled" : ""} ${automaticCandidate ? "auto-replacement-candidate" : ""}`}
                       style={cellStyle}
                       onClick={() => {
+                        if (automaticClickable) {
+                          handleAutomaticReplacementClick(day.key, roleItem.code, assignment);
+                          return;
+                        }
                         if (clickable && assignment.doctorId) {
                           onSwapCellClick("handoff", day.key, roleItem.code, assignment.doctorId);
                         }
@@ -2766,6 +2873,12 @@ function PublishedRoster({
                           {changeMode === "exchange" && usable && !draggable && (
                             <span style={{ fontSize: "10px", color: "#0284c7" }}>לחץ פעמיים</span>
                           )}
+                          {changeMode === "auto-exchange" && automaticSelectable && (
+                            <span style={{ fontSize: "10px", color: "#64748b" }}>בחר מקור</span>
+                          )}
+                          {automaticCandidate && (
+                            <span style={{ fontSize: "10px", color: "#16a34a" }}>החלפה אפשרית</span>
+                          )}
                         </div>
                       ) : (
                         <span style={{ color: droppable ? "#16a34a" : "#cbd5e1", fontSize: droppable ? "12px" : undefined }}>
@@ -2780,7 +2893,7 @@ function PublishedRoster({
           </tbody>
         </table>
       </div> : null}
-      {selectedMobileDayKey ? (
+      {isMobile && selectedMobileDayKey ? (
         <MobileDayScheduleModal
           schedule={schedule}
           roles={roles}
