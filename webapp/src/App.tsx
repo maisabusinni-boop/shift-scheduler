@@ -1701,6 +1701,7 @@ export function App() {
               removeDoctor={removeDoctor}
               approvePendingRegistration={approvePendingRegistration}
               rejectPendingRegistration={rejectPendingRegistration}
+              refreshFromServer={() => run(() => loadFromServerWithUnsavedCheck())}
               loadTestData={loadTestData}
             />
           )}
@@ -3274,6 +3275,7 @@ function Doctors({
   removeDoctor,
   approvePendingRegistration,
   rejectPendingRegistration,
+  refreshFromServer,
   loadTestData
 }: {
   data: WorkspaceData;
@@ -3303,6 +3305,7 @@ function Doctors({
   removeDoctor: (doctorId: string) => void;
   approvePendingRegistration: (requestId: string) => void;
   rejectPendingRegistration: (requestId: string) => void;
+  refreshFromServer: () => void;
   loadTestData?: () => void;
 }) {
   const pendingRegistrationRequests = data.registrationRequests.filter((request) => request.status === "pending");
@@ -3311,6 +3314,8 @@ function Doctors({
       <div className="toolbar">
         <h2>רופאים ומשתמשים</h2>
         <span>{data.doctors.length} רשומות</span>
+        <span>{pendingRegistrationRequests.length} בקשות ממתינות</span>
+        <button onClick={refreshFromServer}>רענן מהשרת</button>
         {loadTestData && (
           <button onClick={loadTestData} style={{ background: "#f0fdf4", borderColor: "#bbf7d0", color: "#166534" }}>
             טען 20 רופאי בדיקה ומשתמש mais

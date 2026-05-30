@@ -71,6 +71,10 @@ async function apiCall(action: string, extraPayload: Record<string, any> = {}): 
   
   const result = await response.json();
   if (result.error) {
+    const unsupportedPublicRegistration = action === "submit_registration_request" && /wrong|invalid|שגוי|שגויים|לא מוכרת|not found/i.test(String(result.error));
+    if (unsupportedPublicRegistration) {
+      throw new Error("השרת עדיין לא תומך בבקשות משתמש חדש. צריך לפרוס מחדש את Code.gs ב-Google Apps Script ואז לנסות שוב.");
+    }
     throw new Error(result.error);
   }
   
