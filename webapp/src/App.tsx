@@ -249,6 +249,15 @@ export function App() {
     }
   }, [tab, visibleTabs]);
 
+  useEffect(() => {
+    if (tab !== "doctors" || !canManageUsers(role) || !hasCredentials()) return;
+    loadWorkspace()
+      .then((loaded) => setAndPersist(loaded, true))
+      .catch((error) => {
+        console.warn("Failed to refresh registration requests", error);
+      });
+  }, [tab, role]);
+
   function setAndPersist(next: WorkspaceData, isSavedToServer = false) {
     saveLocalWorkspace(next);
     if (isSavedToServer) {
@@ -510,7 +519,15 @@ export function App() {
     setMessage("");
     try {
       const passwordHash = await hashPassword(password);
-      await submitRegistrationRequest(loginUrl, { doctorName, gmail, username, passwordHash });
+      const result = await submitRegistrationRequest(loginUrl, { doctorName, gmail, username, passwordHash });
+      setAndPersist({
+        ...data,
+        registrationRequests: [
+          result.request,
+          ...data.registrationRequests.filter((request) => request.id !== result.request.id)
+        ],
+        updatedAt: new Date().toISOString()
+      });
       setRegistrationForm({ doctorName: "", gmail: "", username: "", password: "" });
       setShowRegistrationModal(false);
       setMessage("הבקשה נשלחה למתכנן הבכיר לאישור.");
@@ -1523,8 +1540,8 @@ export function App() {
           </form>
         </section>
         {showRegistrationModal ? (
-          <div className="modal-overlay" onClick={() => setShowRegistrationModal(false)}>
-            <section className="modal-panel" onClick={(event) => event.stopPropagation()} style={{ maxWidth: "480px" }}>
+          <div className="modal-overlay registration-modal-overlay" onClick={() => setShowRegistrationModal(false)}>
+            <section className="modal-panel registration-modal-panel" onClick={(event) => event.stopPropagation()}>
               <header className="day-schedule-modal-header">
                 <div><h3>בקשת משתמש חדש</h3></div>
                 <button type="button" className="icon-button" onClick={() => setShowRegistrationModal(false)} aria-label="סגור"><X size={16} /></button>
