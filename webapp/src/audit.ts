@@ -25,6 +25,18 @@ export type AuditInput = {
   changeDetails?: PublishedChangeDetails;
 };
 
+const visiblePublishedChangeActions = new Set([
+  "request-apply-to-schedule",
+  "published-swap-direct",
+  "published-swap-approved"
+]);
+
+export function isAuditEntryVisibleForSchedule(entry: AuditEntry, activeScheduleKey: string) {
+  if (!visiblePublishedChangeActions.has(entry.action)) return false;
+  if (entry.scheduleKey) return entry.scheduleKey === activeScheduleKey;
+  return Boolean(entry.date?.startsWith(`${activeScheduleKey}-`));
+}
+
 export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditEntry {
   const timestamp = new Date().toISOString();
   return {

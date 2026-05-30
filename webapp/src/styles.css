@@ -1329,6 +1329,19 @@ textarea {
   gap: 12px;
 }
 
+.pending-registration-panel {
+  background: color-mix(in srgb, var(--panel) 94%, #f59e0b);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.pending-registration-panel h3 {
+  font-size: 16px;
+  margin: 0;
+}
+
 .doctor-card {
   background: var(--panel);
   border: 1px solid var(--line);

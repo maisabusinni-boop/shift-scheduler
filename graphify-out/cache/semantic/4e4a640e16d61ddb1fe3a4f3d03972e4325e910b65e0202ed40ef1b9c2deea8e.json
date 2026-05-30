@@ -1,0 +1,1 @@
+{"nodes": [], "edges": [{"source": "vite_shared_alias_config", "target": "types_workspace_schema", "relation": "references", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "webapp/tsconfig.json", "source_location": null, "weight": 1.0}], "hyperedges": []}

@@ -23,9 +23,9 @@ import {
   Users,
   X
 } from "lucide-react";
-import { createAuditEntry, type ActorContext, type AuditInput } from "@/audit";
+import { createAuditEntry, isAuditEntryVisibleForSchedule, type ActorContext, type AuditInput } from "@/audit";
 import { resolveSession, type SessionUser } from "@/auth";
-import { buildCalendarPreview, normalizeCalendarId } from "@/calendar";
+import { buildCalendarPreview, normalizeCalendarId, normalizeCalendarRecipientEmail } from "@/calendar";
 import { cellKey, createId, doctorSortForRole, exclusionRoleCodesForAssignment, exclusionRoles, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
 import {
   getWebAppUrl,
@@ -34,8 +34,10 @@ import {
   hashPassword,
   loginWithCredentials,
   bootstrapPlanner,
+  submitRegistrationRequest,
   loadWorkspace,
   saveWorkspace,
+  adminSaveUsers,
   clearLocalCredentials,
   getLocalCredentials
 } from "@/googleDrive";
@@ -54,6 +56,12 @@ import {
   isOwnDoctor
 } from "@/permissions";
 import { createChangeRequest, nextRequestStatusForDecision } from "@/requests";
+import {
+  approveRegistrationAsMerge,
+  approveRegistrationAsNew,
+  findLikelyRegistrationMatches,
+  rejectRegistrationRequest
+} from "@/registration";
 import { buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import {
@@ -76,6 +84,7 @@ import type {
   DoctorGroup,
   MonthSchedule,
   PublishedChangeDetails,
+  RegistrationRequest,
   Role,
   RoleCode,
   WorkspaceData
@@ -86,6 +95,13 @@ import "./styles.css";
 type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange" | "auto-exchange";
 type AppliedPublishedChangeMode = Exclude<PublishedChangeMode, "auto-exchange">;
+type RegistrationApprovalDraft = {
+  mode: "new" | "merge";
+  doctorId: string;
+  group: DoctorGroup;
+  role: AppRole;
+  canAngio: boolean;
+};
 type SyncState = {
   lastSavedAt: string | null;
   lastSaveError: string | null;
@@ -172,11 +188,15 @@ export function App() {
   const [plannerName, setPlannerName] = useState("");
   const [showBootstrap, setShowBootstrap] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+  const [registrationForm, setRegistrationForm] = useState({ doctorName: "", gmail: "", username: "", password: "" });
+  const [registrationApprovalDrafts, setRegistrationApprovalDrafts] = useState<Record<string, RegistrationApprovalDraft>>({});
   const [calendarInput, setCalendarInput] = useState(data.calendar.calendarInput);
   const [deviceId] = useState(() => loadDeviceId());
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
   const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
   const [doctorUsernameDrafts, setDoctorUsernameDrafts] = useState<Record<string, string>>({});
+  const [doctorEmailDrafts, setDoctorEmailDrafts] = useState<Record<string, string>>({});
   const [doctorPasswordDrafts, setDoctorPasswordDrafts] = useState<Record<string, string>>({});
   const [doctorRoleDrafts, setDoctorRoleDrafts] = useState<Record<string, AppRole>>({});
   const [doctorNameDrafts, setDoctorNameDrafts] = useState<Record<string, string>>({});
@@ -417,7 +437,7 @@ export function App() {
 
   useEffect(() => {
     if (currentUser && data) {
-      const match = data.users.find(u => u.active && (u.email ? u.email.split('@')[0] : "").toLowerCase() === currentUser.username.toLowerCase());
+      const match = data.users.find((u) => u.active && (u.username ?? "").toLowerCase() === currentUser.username.toLowerCase());
       if (match && match.name !== currentUser.name) {
         setCurrentUser({ username: currentUser.username, name: match.name });
       }
@@ -470,6 +490,32 @@ export function App() {
       setMessage("המערכת הוקמה בהצלחה! הוגדרת כמתכנן בכיר.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "ההקמה נכשלה.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSubmitRegistrationRequest() {
+    if (!loginUrl) return setMessage("נא להזין את כתובת השרת.");
+    const doctorName = registrationForm.doctorName.trim();
+    const gmail = registrationForm.gmail.trim().toLowerCase();
+    const username = registrationForm.username.trim().toLowerCase();
+    const password = registrationForm.password.trim();
+    if (!doctorName) return setMessage("נא להזין שם רופא.");
+    if (!username) return setMessage("נא להזין שם משתמש.");
+    if (!password) return setMessage("נא להזין סיסמה.");
+    if (gmail && !normalizeCalendarRecipientEmail(gmail)) return setMessage("כתובת Gmail לא תקינה.");
+
+    setBusy(true);
+    setMessage("");
+    try {
+      const passwordHash = await hashPassword(password);
+      await submitRegistrationRequest(loginUrl, { doctorName, gmail, username, passwordHash });
+      setRegistrationForm({ doctorName: "", gmail: "", username: "", password: "" });
+      setShowRegistrationModal(false);
+      setMessage("הבקשה נשלחה למתכנן הבכיר לאישור.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "שליחת הבקשה נכשלה.");
     } finally {
       setBusy(false);
     }
@@ -695,9 +741,10 @@ export function App() {
       const hash = await hashPassword("203-mais");
       const nextUsers = [...workspace.users];
       
-      const cleanUsers = nextUsers.filter(u => u.email.split('@')[0] !== "mais");
+      const cleanUsers = nextUsers.filter((u) => (u.username ?? u.email.split("@")[0]) !== "mais");
       cleanUsers.push({
         id: "user-mais",
+        username: "mais",
         email: "mais@local",
         name: "מאיס",
         role: "senior-planner",
@@ -864,20 +911,22 @@ export function App() {
     const newGroup = doctorGroupDrafts[doctorId] ?? doctor.group;
     const newCanAngio = doctorAngioDrafts[doctorId] ?? doctor.canAngio;
     
-    const username = (doctorUsernameDrafts[doctorId] ?? "").trim().toLowerCase();
+    const existing = workspace.users.find((user) => user.doctorId === doctorId);
+    const username = (doctorUsernameDrafts[doctorId] ?? existing?.username ?? "").trim().toLowerCase();
+    const calendarEmailInput = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
     const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
     const appRole = doctorRoleDrafts[doctorId] ?? (newGroup === "senior" ? "senior" : "resident");
-    
-    const existing = workspace.users.find((user) => user.doctorId === doctorId);
     if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
     if (!existing && !password) return setMessage("צריך להזין סיסמה ראשונית למשתמש חדש.");
     
+    if (calendarEmailInput && !normalizeCalendarRecipientEmail(calendarEmailInput)) return setMessage("Invalid Gmail address for calendar invitations.");
+
     let passwordHash = existing?.passwordHash || "";
     if (password) {
       passwordHash = await hashPassword(password);
     }
     
-    const userMail = username ? username + "@local" : (existing?.email || (newName + "@local"));
+    const calendarEmail = normalizeCalendarRecipientEmail(calendarEmailInput) || `${username || existing?.username || newName}@local`;
     commitChange({
       mutator: (draft) => {
         const before = {
@@ -898,7 +947,8 @@ export function App() {
         if (matchIndex !== -1) {
           draft.users[matchIndex] = {
             ...draft.users[matchIndex],
-            email: userMail,
+            username,
+            email: calendarEmail,
             name: newName,
             role: appRole,
             active: true,
@@ -907,7 +957,8 @@ export function App() {
         } else {
           draft.users.push({
             id: createId("user"),
-            email: userMail,
+            username,
+            email: calendarEmail,
             name: newName,
             role: appRole,
             doctorId,
@@ -929,7 +980,44 @@ export function App() {
       },
       note: "פרטי הרופא והמשתמש עודכנו מקומית ויישמרו ברקע."
     });
+    try {
+      const saved = await adminSaveUsers(latestDataRef.current.users, latestDataRef.current.doctors, latestDataRef.current.registrationRequests);
+      setAndPersist(saved, true);
+    } catch (err) {
+      setMessage("שמירת פרטי המשתמש לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+    }
     setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
+  }
+
+  async function approvePendingRegistration(requestId: string) {
+    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לאשר בקשות משתמש.");
+    const request = workspace.registrationRequests.find((item) => item.id === requestId);
+    if (!request) return setMessage("הבקשה לא נמצאה.");
+    const draft = registrationApprovalDrafts[requestId] ?? defaultRegistrationApprovalDraft(workspace, request);
+    try {
+      const next = draft.mode === "merge"
+        ? approveRegistrationAsMerge(workspace, { requestId, doctorId: draft.doctorId, decidedByUserId: appUser?.id ?? null })
+        : approveRegistrationAsNew(workspace, { requestId, group: draft.group, role: draft.role, canAngio: draft.canAngio, decidedByUserId: appUser?.id ?? null });
+      const saved = await adminSaveUsers(next.users, next.doctors, next.registrationRequests);
+      setAndPersist(saved, true);
+      setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
+      setMessage(draft.mode === "merge" ? "הבקשה אושרה והסיסמה עודכנה למשתמש הקיים." : "הבקשה אושרה ונוצר משתמש חדש.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "אישור הבקשה נכשל.");
+    }
+  }
+
+  async function rejectPendingRegistration(requestId: string) {
+    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לדחות בקשות משתמש.");
+    try {
+      const next = rejectRegistrationRequest(workspace, requestId, appUser?.id ?? null);
+      const saved = await adminSaveUsers(next.users, next.doctors, next.registrationRequests);
+      setAndPersist(saved, true);
+      setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
+      setMessage("הבקשה נדחתה.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "דחיית הבקשה נכשלה.");
+    }
   }
 
   function removeDoctor(doctorId: string) {
@@ -1064,7 +1152,14 @@ export function App() {
         draft.calendar.calendarId = normalizeCalendarId(calendarInput);
         draft.calendar.lastDryRun = preview;
         preview.forEach((event) => {
-          draft.calendar.syncRecords[event.assignmentKey] = { assignmentKey: event.assignmentKey, eventId: event.eventId, hash: event.hash, lastSyncedAt: new Date().toISOString() };
+          if (!event.attendeeEmails.length) return;
+          draft.calendar.syncRecords[event.assignmentKey] = {
+            assignmentKey: event.assignmentKey,
+            eventId: event.eventId,
+            hash: event.hash,
+            lastSyncedAt: new Date().toISOString(),
+            attendeeEmails: event.attendeeEmails
+          };
         });
         currentSchedule.lastSyncedAt = new Date().toISOString();
         return { action: "calendar-mock-sync", entityType: "calendar", entityId: "calendar", scheduleKey: currentSchedule.key, before, after: { calendar: draft.calendar, lastSyncedAt: currentSchedule.lastSyncedAt } };
@@ -1386,6 +1481,9 @@ export function App() {
                 <button type="submit" className="primary" disabled={busy} style={{ alignSelf: "center", width: "100%", padding: "10px", marginTop: "8px" }}>
                   {busy ? "מתחבר..." : "התחבר"}
                 </button>
+                <button type="button" disabled={busy} onClick={() => { setShowRegistrationModal(true); setMessage(""); }} style={{ alignSelf: "center", width: "100%", padding: "10px" }}>
+                  משתמש חדש
+                </button>
                 <div style={{ textAlign: "center", marginTop: "12px" }}>
                   <a href="#" onClick={(e) => { e.preventDefault(); setShowBootstrap(true); setMessage(""); }} style={{ fontSize: "12px", color: "var(--color-primary-blue, #2563eb)" }}>
                     הקמה ראשונית של המערכת (התקנה חדשה)
@@ -1424,6 +1522,34 @@ export function App() {
             </div>
           </form>
         </section>
+        {showRegistrationModal ? (
+          <div className="modal-overlay" onClick={() => setShowRegistrationModal(false)}>
+            <section className="modal-panel" onClick={(event) => event.stopPropagation()} style={{ maxWidth: "480px" }}>
+              <header className="day-schedule-modal-header">
+                <div><h3>בקשת משתמש חדש</h3></div>
+                <button type="button" className="icon-button" onClick={() => setShowRegistrationModal(false)} aria-label="סגור"><X size={16} /></button>
+              </header>
+              <div className="drive-grid" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם רופא בעברית
+                  <input value={registrationForm.doctorName} onChange={(event) => setRegistrationForm({ ...registrationForm, doctorName: event.target.value })} placeholder="ד״ר ישראל ישראלי" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>Gmail לאירועי יומן
+                  <input dir="ltr" value={registrationForm.gmail} onChange={(event) => setRegistrationForm({ ...registrationForm, gmail: event.target.value })} placeholder="doctor@gmail.com" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם משתמש
+                  <input dir="ltr" value={registrationForm.username} onChange={(event) => setRegistrationForm({ ...registrationForm, username: event.target.value })} placeholder="username" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>סיסמה
+                  <input type="password" dir="ltr" value={registrationForm.password} onChange={(event) => setRegistrationForm({ ...registrationForm, password: event.target.value })} placeholder="password" />
+                </label>
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "8px" }}>
+                  <button type="button" onClick={() => setShowRegistrationModal(false)}>ביטול</button>
+                  <button type="button" className="primary" disabled={busy} onClick={handleSubmitRegistrationRequest}>{busy ? "שולח..." : "שלח בקשה"}</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </main>
     );
   }
@@ -1555,6 +1681,8 @@ export function App() {
               setExpandedDoctorId={setExpandedDoctorId}
               usernameDrafts={doctorUsernameDrafts}
               setUsernameDrafts={setDoctorUsernameDrafts}
+              emailDrafts={doctorEmailDrafts}
+              setEmailDrafts={setDoctorEmailDrafts}
               passwordDrafts={doctorPasswordDrafts}
               setPasswordDrafts={setDoctorPasswordDrafts}
               roleDrafts={doctorRoleDrafts}
@@ -1565,14 +1693,18 @@ export function App() {
               setGroupDrafts={setDoctorGroupDrafts}
               angioDrafts={doctorAngioDrafts}
               setAngioDrafts={setDoctorAngioDrafts}
+              registrationApprovalDrafts={registrationApprovalDrafts}
+              setRegistrationApprovalDrafts={setRegistrationApprovalDrafts}
               addDoctor={addDoctor}
               toggleDoctor={toggleDoctor}
               saveDoctorUser={saveDoctorUser}
               removeDoctor={removeDoctor}
+              approvePendingRegistration={approvePendingRegistration}
+              rejectPendingRegistration={rejectPendingRegistration}
               loadTestData={loadTestData}
             />
           )}
-          {tab === "audit" && <AuditPanel entries={workspace.auditLog} doctors={workspace.doctors} roles={workspace.roles} />}
+          {tab === "audit" && <AuditPanel entries={workspace.auditLog} activeScheduleKey={schedule.key} doctors={workspace.doctors} roles={workspace.roles} />}
           {tab === "drive" && (
             <DrivePanel
               data={workspace}
@@ -1830,6 +1962,17 @@ function isDoctorBlockedForAssignment(schedule: MonthSchedule, doctorId: string,
     exclusion.date === date &&
     (exclusion.roleCode === null || roleCodes.has(exclusion.roleCode))
   );
+}
+
+function defaultRegistrationApprovalDraft(data: WorkspaceData, request: RegistrationRequest): RegistrationApprovalDraft {
+  const likelyMatch = findLikelyRegistrationMatches(data, request)[0];
+  return {
+    mode: likelyMatch ? "merge" : "new",
+    doctorId: likelyMatch?.id ?? "",
+    group: "resident",
+    role: "resident",
+    canAngio: false
+  };
 }
 
 function formatDoctorOption(doctor: Doctor) {
@@ -3014,6 +3157,95 @@ function MobileDayScheduleModal({
   );
 }
 
+function PendingRegistrationRequests({
+  data,
+  requests,
+  drafts,
+  setDrafts,
+  approve,
+  reject
+}: {
+  data: WorkspaceData;
+  requests: RegistrationRequest[];
+  drafts: Record<string, RegistrationApprovalDraft>;
+  setDrafts: (value: Record<string, RegistrationApprovalDraft>) => void;
+  approve: (requestId: string) => void;
+  reject: (requestId: string) => void;
+}) {
+  if (!requests.length) return null;
+
+  function updateDraft(request: RegistrationRequest, patch: Partial<RegistrationApprovalDraft>) {
+    const current = drafts[request.id] ?? defaultRegistrationApprovalDraft(data, request);
+    setDrafts({ ...drafts, [request.id]: { ...current, ...patch } });
+  }
+
+  return (
+    <section className="pending-registration-panel">
+      <div className="toolbar">
+        <h3>בקשות משתמש ממתינות</h3>
+        <span>{requests.length} לאישור</span>
+      </div>
+      <div className="doctor-card-list">
+        {requests.map((request) => {
+          const draft = drafts[request.id] ?? defaultRegistrationApprovalDraft(data, request);
+          const matches = findLikelyRegistrationMatches(data, request);
+          return (
+            <article className="doctor-card expanded" key={request.id}>
+              <div className="doctor-card-main">
+                <span>
+                  <b>{request.doctorName}</b>
+                  <small dir="ltr">{request.username}{request.gmail ? ` · ${request.gmail}` : ""}</small>
+                </span>
+                <span className="status draft">{matches.length ? `${matches.length} התאמות אפשריות` : "בקשה חדשה"}</span>
+              </div>
+              <div className="doctor-edit" style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+                <div className="form-row">
+                  <label className="check">
+                    <input type="radio" checked={draft.mode === "new"} onChange={() => updateDraft(request, { mode: "new" })} />
+                    צור רופא ומשתמש חדשים
+                  </label>
+                  <label className="check">
+                    <input type="radio" checked={draft.mode === "merge"} onChange={() => updateDraft(request, { mode: "merge", doctorId: draft.doctorId || data.doctors[0]?.id || "" })} />
+                    איחוד עם משתמש קיים / איפוס סיסמה
+                  </label>
+                </div>
+
+                {draft.mode === "new" ? (
+                  <div className="form-row">
+                    <select value={draft.group} onChange={(event) => updateDraft(request, { group: event.target.value as DoctorGroup, role: event.target.value === "senior" ? "senior" : "resident" })}>
+                      <option value="resident">מתמחה</option>
+                      <option value="senior">בכיר</option>
+                    </select>
+                    <select value={draft.role} onChange={(event) => updateDraft(request, { role: event.target.value as AppRole })}>
+                      {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                    <label className="check"><input type="checkbox" checked={draft.canAngio} onChange={(event) => updateDraft(request, { canAngio: event.target.checked })} />אנגיו</label>
+                  </div>
+                ) : (
+                  <div className="form-row">
+                    <select value={draft.doctorId} onChange={(event) => updateDraft(request, { doctorId: event.target.value })}>
+                      <option value="">בחר רופא קיים</option>
+                      {matches.length ? <option disabled value="__matches">התאמות אפשריות</option> : null}
+                      {matches.map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
+                      {matches.length ? <option disabled value="__all">כל הרופאים</option> : null}
+                      {data.doctors.filter((doctor) => !matches.some((match) => match.id === doctor.id)).map((doctor) => <option key={doctor.id} value={doctor.id}>{formatDoctorOption(doctor)}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                  <button className="danger" onClick={() => reject(request.id)}>דחה</button>
+                  <button className="primary" disabled={draft.mode === "merge" && !draft.doctorId} onClick={() => approve(request.id)}>אשר</button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Doctors({
   data,
   form,
@@ -3022,6 +3254,8 @@ function Doctors({
   setExpandedDoctorId,
   usernameDrafts,
   setUsernameDrafts,
+  emailDrafts,
+  setEmailDrafts,
   passwordDrafts,
   setPasswordDrafts,
   roleDrafts,
@@ -3032,10 +3266,14 @@ function Doctors({
   setGroupDrafts,
   angioDrafts,
   setAngioDrafts,
+  registrationApprovalDrafts,
+  setRegistrationApprovalDrafts,
   addDoctor,
   toggleDoctor,
   saveDoctorUser,
   removeDoctor,
+  approvePendingRegistration,
+  rejectPendingRegistration,
   loadTestData
 }: {
   data: WorkspaceData;
@@ -3045,6 +3283,8 @@ function Doctors({
   setExpandedDoctorId: (value: string | null) => void;
   usernameDrafts: Record<string, string>;
   setUsernameDrafts: (value: Record<string, string>) => void;
+  emailDrafts: Record<string, string>;
+  setEmailDrafts: (value: Record<string, string>) => void;
   passwordDrafts: Record<string, string>;
   setPasswordDrafts: (value: Record<string, string>) => void;
   roleDrafts: Record<string, AppRole>;
@@ -3055,12 +3295,17 @@ function Doctors({
   setGroupDrafts: (value: Record<string, DoctorGroup>) => void;
   angioDrafts: Record<string, boolean>;
   setAngioDrafts: (value: Record<string, boolean>) => void;
+  registrationApprovalDrafts: Record<string, RegistrationApprovalDraft>;
+  setRegistrationApprovalDrafts: (value: Record<string, RegistrationApprovalDraft>) => void;
   addDoctor: () => void;
   toggleDoctor: (doctorId: string) => void;
   saveDoctorUser: (doctorId: string) => void;
   removeDoctor: (doctorId: string) => void;
+  approvePendingRegistration: (requestId: string) => void;
+  rejectPendingRegistration: (requestId: string) => void;
   loadTestData?: () => void;
 }) {
+  const pendingRegistrationRequests = data.registrationRequests.filter((request) => request.status === "pending");
   return (
     <section className="panel">
       <div className="toolbar">
@@ -3072,6 +3317,14 @@ function Doctors({
           </button>
         )}
       </div>
+      <PendingRegistrationRequests
+        data={data}
+        requests={pendingRegistrationRequests}
+        drafts={registrationApprovalDrafts}
+        setDrafts={setRegistrationApprovalDrafts}
+        approve={approvePendingRegistration}
+        reject={rejectPendingRegistration}
+      />
       <div className="form-row doctor-add-row">
         <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="שם רופא" />
         <select value={form.group} onChange={(event) => setForm({ ...form, group: event.target.value as Doctor["group"] })}><option value="resident">מתמחה</option><option value="senior">בכיר</option></select>
@@ -3082,8 +3335,10 @@ function Doctors({
         {data.doctors.map((doctor) => {
           const linkedUser = data.users.find((user) => user.doctorId === doctor.id);
           const expanded = expandedDoctorId === doctor.id;
-          const displayUsername = linkedUser?.email ? linkedUser.email.split('@')[0] : "";
+          const displayUsername = linkedUser?.username ?? "";
+          const displayCalendarEmail = linkedUser?.email ?? "";
           const username = usernameDrafts[doctor.id] ?? displayUsername;
+          const calendarEmail = emailDrafts[doctor.id] ?? displayCalendarEmail;
           const password = passwordDrafts[doctor.id] ?? "";
           const appRole = roleDrafts[doctor.id] ?? linkedUser?.role ?? (doctor.group === "senior" ? "senior" : "resident");
           const drName = nameDrafts[doctor.id] ?? doctor.name;
@@ -3128,6 +3383,9 @@ function Doctors({
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה במערכת
                       <select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                     </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>Calendar Gmail
+                      <input dir="ltr" value={calendarEmail} onChange={(event) => setEmailDrafts({ ...emailDrafts, [doctor.id]: event.target.value })} placeholder="doctor@gmail.com" />
+                    </label>
                   </div>
                   
                   <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--line)", paddingTop: "12px", marginTop: "4px" }}>
@@ -3142,14 +3400,10 @@ function Doctors({
     </section>
   );
 }
-function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctors: Doctor[]; roles: Role[] }) {
+function AuditPanel({ entries, activeScheduleKey, doctors, roles }: { entries: AuditEntry[]; activeScheduleKey: string; doctors: Doctor[]; roles: Role[] }) {
   const doctorById = new Map(doctors.map((doctor) => [doctor.id, doctor.name]));
   const roleByCode = new Map(roles.map((role) => [role.code, role.name]));
-  const visible = entries.filter((entry) => 
-    entry.action === "request-apply-to-schedule" ||
-    entry.action === "published-swap-direct" ||
-    entry.action === "published-swap-approved"
-  );
+  const visible = entries.filter((entry) => isAuditEntryVisibleForSchedule(entry, activeScheduleKey));
   const formatDate = (date: string | undefined) => date ? date.split("-").reverse().join("/") : "";
   function fallbackDetails(entry: AuditEntry): PublishedChangeDetails | null {
     const before = entry.before as { assignment?: Assignment | null; request?: ChangeRequest; changeCode?: string } | null;
@@ -3182,9 +3436,9 @@ function AuditPanel({ entries, doctors, roles }: { entries: AuditEntry[]; doctor
   }
   return (
     <section className="panel">
-      <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} שינויים אחרי פרסום</span></div>
+      <div className="toolbar"><h2>יומן פעולות</h2><span>{visible.length} שינויים אחרי פרסום · {activeScheduleKey}</span></div>
       <div className="list audit-list schedule-audit">
-        {visible.length === 0 ? <div className="list-row">אין עדיין שינויי שיבוץ אחרי פרסום.</div> : null}
+        {visible.length === 0 ? <div className="list-row">אין עדיין שינויי שיבוץ אחרי פרסום לחודש {activeScheduleKey}.</div> : null}
         {visible.map((entry) => {
           const details = entry.changeDetails ?? fallbackDetails(entry);
           if (!details) return null;

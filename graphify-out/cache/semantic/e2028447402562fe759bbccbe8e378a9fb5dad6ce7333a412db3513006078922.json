@@ -1,0 +1,1 @@
+{"nodes": [], "edges": [{"source": "vite_shared_alias_config", "target": "vite_shared_alias_config", "relation": "semantically_similar_to", "confidence": "INFERRED", "confidence_score": 0.9, "source_file": "webapp/vitest.config.ts", "source_location": null, "weight": 1.0}], "hyperedges": []}

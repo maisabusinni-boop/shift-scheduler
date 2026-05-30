@@ -70,6 +70,7 @@ export function createSampleWorkspace(): WorkspaceData {
     roles,
     doctors,
     users: [],
+    registrationRequests: [],
     schedules: {
       [schedule.key]: schedule
     },

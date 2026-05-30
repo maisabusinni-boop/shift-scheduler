@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createAuditEntry } from "@/audit";
+import { createAuditEntry, isAuditEntryVisibleForSchedule } from "@/audit";
 import { createBootstrapPlanner, resolveSession, type SessionUser } from "@/auth";
 import { ROLE_CODES } from "@/domain";
 import { migrateWorkspace } from "@/migration";
 import { canEditRoster, canManageUsers, canPublish, canSeeSchedule } from "@/permissions";
+import { approveRegistrationAsMerge, createRegistrationRequest } from "@/registration";
 import { createChangeRequest, nextRequestStatusForDecision } from "@/requests";
 import { createSampleWorkspace } from "@/sampleData";
 import type { AppUser } from "@/types";
@@ -157,6 +158,51 @@ describe("requests and audit", () => {
     expect(entry.changeDetails).toEqual(changeDetails);
     expect(entry.snapshotUrl).toBeUndefined();
   });
+
+  it("shows visual audit entries only for the active schedule month", () => {
+    const data = createSampleWorkspace();
+    const actor = {
+      googleUser: { email: "planner@local", name: "Planner" },
+      appUserId: "user-1",
+      appRole: "senior-planner" as const,
+      deviceId: "device-1",
+      driveSync: data.driveSync
+    };
+    const baseInput = {
+      action: "published-swap-direct",
+      entityType: "assignment" as const,
+      entityId: "2026-05-02|half-resident",
+      roleCode: ROLE_CODES.HALF_RESIDENT,
+      before: null,
+      after: null
+    };
+
+    const activeMonthEntry = createAuditEntry(actor, {
+      ...baseInput,
+      scheduleKey: "2026-05",
+      date: "2026-05-02"
+    });
+    const otherMonthEntry = createAuditEntry(actor, {
+      ...baseInput,
+      scheduleKey: "2026-06",
+      date: "2026-06-02"
+    });
+    const legacyActiveMonthEntry = createAuditEntry(actor, {
+      ...baseInput,
+      date: "2026-05-03"
+    });
+    const nonVisualEntry = createAuditEntry(actor, {
+      ...baseInput,
+      action: "assignment-update",
+      scheduleKey: "2026-05",
+      date: "2026-05-04"
+    });
+
+    expect(isAuditEntryVisibleForSchedule(activeMonthEntry, "2026-05")).toBe(true);
+    expect(isAuditEntryVisibleForSchedule(otherMonthEntry, "2026-05")).toBe(false);
+    expect(isAuditEntryVisibleForSchedule(legacyActiveMonthEntry, "2026-05")).toBe(true);
+    expect(isAuditEntryVisibleForSchedule(nonVisualEntry, "2026-05")).toBe(false);
+  });
 });
 
 describe("migration", () => {
@@ -164,13 +210,72 @@ describe("migration", () => {
     const data = createSampleWorkspace();
     const legacy = { ...data, schemaVersion: 1 };
     delete (legacy as Partial<typeof data>).users;
+    delete (legacy as Partial<typeof data>).registrationRequests;
     delete (legacy as Partial<typeof data>).changeRequests;
     delete (legacy as Partial<typeof data>).auditLog;
 
     const migrated = migrateWorkspace(legacy);
     expect(migrated.schemaVersion).toBe(2);
     expect(migrated.users).toEqual([]);
+    expect(migrated.registrationRequests).toEqual([]);
     expect(migrated.changeRequests).toEqual([]);
     expect(migrated.auditLog).toEqual([]);
+  });
+});
+
+describe("registration requests", () => {
+  it("normalizes username and Gmail and rejects duplicate pending usernames", () => {
+    const first = createRegistrationRequest({
+      doctorName: "ד״ר בדיקה",
+      gmail: "Doctor@Gmail.COM",
+      username: " NewDoc ",
+      passwordHash: "hash-1"
+    }, []);
+
+    expect(first.username).toBe("newdoc");
+    expect(first.gmail).toBe("doctor@gmail.com");
+    expect(() => createRegistrationRequest({
+      doctorName: "ד״ר אחרת",
+      gmail: "",
+      username: "newdoc",
+      passwordHash: "hash-2"
+    }, [first])).toThrow("pending request");
+  });
+
+  it("merges a reset request into an existing doctor without replacing the doctor id", () => {
+    const data = createSampleWorkspace();
+    const doctor = data.doctors[0];
+    data.users.push({
+      id: "user-existing",
+      username: "old",
+      email: "old@local",
+      name: doctor.name,
+      role: "resident",
+      doctorId: doctor.id,
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      passwordHash: "old-hash"
+    });
+    data.registrationRequests.push({
+      id: "reg-1",
+      doctorName: "ד״ר חדש",
+      gmail: "new@gmail.com",
+      username: "new",
+      passwordHash: "new-hash",
+      status: "pending",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      decidedAt: null,
+      decidedByUserId: null,
+      resolutionNote: ""
+    });
+
+    const merged = approveRegistrationAsMerge(data, { requestId: "reg-1", doctorId: doctor.id, decidedByUserId: "planner" }, "2026-01-03T00:00:00.000Z");
+
+    expect(merged.doctors.find((item) => item.id === doctor.id)).toBeTruthy();
+    expect(merged.doctors).toHaveLength(data.doctors.length);
+    const linkedUser = merged.users.find((user) => user.doctorId === doctor.id);
+    expect(linkedUser?.passwordHash).toBe("new-hash");
+    expect(linkedUser?.username).toBe("new");
+    expect(merged.registrationRequests[0].status).toBe("approved");
   });
 });

@@ -1,0 +1,177 @@
+{
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\package.json": {
+    "mtime": 1779560365.2940907,
+    "ast_hash": "04c72e96c890d0793e89dd3bc9e7af61",
+    "semantic_hash": "04c72e96c890d0793e89dd3bc9e7af61"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\tsconfig.json": {
+    "mtime": 1779536618.8950999,
+    "ast_hash": "d95ee39cd4ae464b09dd56779a6f720c",
+    "semantic_hash": "d95ee39cd4ae464b09dd56779a6f720c"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\vite.config.ts": {
+    "mtime": 1779537170.49506,
+    "ast_hash": "63e87494d623933d6f5be1eec25fe1fb",
+    "semantic_hash": "63e87494d623933d6f5be1eec25fe1fb"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\vitest.config.ts": {
+    "mtime": 1779536635.7859268,
+    "ast_hash": "cafb8e291374362cbf75e214bc4e97f3",
+    "semantic_hash": "cafb8e291374362cbf75e214bc4e97f3"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\sw.js": {
+    "mtime": 1779559236.0371006,
+    "ast_hash": "be51f03ff4966d9c3f3aeec610d5df0c",
+    "semantic_hash": "be51f03ff4966d9c3f3aeec610d5df0c"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\App.tsx": {
+    "mtime": 1779746820.8215272,
+    "ast_hash": "a3ed1b5f55a4a4bae6652b64e6630a2c",
+    "semantic_hash": "a3ed1b5f55a4a4bae6652b64e6630a2c"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\audit.ts": {
+    "mtime": 1779662988.4304242,
+    "ast_hash": "c7d9e73672d5113dbab8b76dba09a8fd",
+    "semantic_hash": "c7d9e73672d5113dbab8b76dba09a8fd"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\auth.ts": {
+    "mtime": 1779645244.5179255,
+    "ast_hash": "64e60f74a0d356adef2bcf22054bfe6e",
+    "semantic_hash": "64e60f74a0d356adef2bcf22054bfe6e"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\calendar.ts": {
+    "mtime": 1779536775.998917,
+    "ast_hash": "be0b526fa83dfefb92e0721896a8e6c4",
+    "semantic_hash": "be0b526fa83dfefb92e0721896a8e6c4"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\domain.ts": {
+    "mtime": 1779660508.9492927,
+    "ast_hash": "a0d4cfb7c532fa364be1f857d11af7a3",
+    "semantic_hash": "a0d4cfb7c532fa364be1f857d11af7a3"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\googleDrive.ts": {
+    "mtime": 1779654751.152275,
+    "ast_hash": "290329a0b59ed77bb34ba493ee2179a3",
+    "semantic_hash": "290329a0b59ed77bb34ba493ee2179a3"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\main.tsx": {
+    "mtime": 1779559248.1984916,
+    "ast_hash": "de0bcdaf152c2e70e6501e78683dc9e1",
+    "semantic_hash": "de0bcdaf152c2e70e6501e78683dc9e1"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\migration.ts": {
+    "mtime": 1779660455.401256,
+    "ast_hash": "1ed21f6cfe28df388d2829e3fa8d2b75",
+    "semantic_hash": "1ed21f6cfe28df388d2829e3fa8d2b75"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\month.ts": {
+    "mtime": 1779536682.6891346,
+    "ast_hash": "cc5e9546ca6d2ae4f4303d8652fd7dd4",
+    "semantic_hash": "cc5e9546ca6d2ae4f4303d8652fd7dd4"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\permissions.ts": {
+    "mtime": 1779567862.2177274,
+    "ast_hash": "24d223c609f55c006ba40717ae1b9146",
+    "semantic_hash": "24d223c609f55c006ba40717ae1b9146"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\pwaInstall.ts": {
+    "mtime": 1779559300.2700553,
+    "ast_hash": "86956e5980a7f2de906dbb6a36ab7959",
+    "semantic_hash": "86956e5980a7f2de906dbb6a36ab7959"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\registerServiceWorker.ts": {
+    "mtime": 1779559243.0416775,
+    "ast_hash": "1a53c0beea19580407aaaa7ef4320baf",
+    "semantic_hash": "1a53c0beea19580407aaaa7ef4320baf"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\requests.ts": {
+    "mtime": 1779567882.7024856,
+    "ast_hash": "ecfea1fecbf7a7b12f5f7cec4d11a2b9",
+    "semantic_hash": "ecfea1fecbf7a7b12f5f7cec4d11a2b9"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\sampleData.ts": {
+    "mtime": 1779573021.2700567,
+    "ast_hash": "ceb5b53c1e619c3e05c0385b48ca4574",
+    "semantic_hash": "ceb5b53c1e619c3e05c0385b48ca4574"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\storage.ts": {
+    "mtime": 1779643498.279444,
+    "ast_hash": "71db66640c06dc686fd6f54f1edce781",
+    "semantic_hash": "71db66640c06dc686fd6f54f1edce781"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\types.ts": {
+    "mtime": 1779662980.0744674,
+    "ast_hash": "504bbc192d9c954a733938466b3a4d06",
+    "semantic_hash": "504bbc192d9c954a733938466b3a4d06"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\validation.ts": {
+    "mtime": 1779735637.6751559,
+    "ast_hash": "6e49f70daf0ff6b77f978d8647cbae6f",
+    "semantic_hash": "6e49f70daf0ff6b77f978d8647cbae6f"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\src\\vite-env.d.ts": {
+    "mtime": 1779537126.4115677,
+    "ast_hash": "0352474ba2918efe13895edbc3780d94",
+    "semantic_hash": "0352474ba2918efe13895edbc3780d94"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\tests\\roles-audit-requests.test.ts": {
+    "mtime": 1779663382.4426377,
+    "ast_hash": "7259d0500c79832ebd7a98abc592bbdc",
+    "semantic_hash": "7259d0500c79832ebd7a98abc592bbdc"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\tests\\validation.test.ts": {
+    "mtime": 1779735647.4489563,
+    "ast_hash": "faadd36f3d2c1b99765787d2224892d6",
+    "semantic_hash": "faadd36f3d2c1b99765787d2224892d6"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\DEPLOY_TO_GITHUB_PAGES.md": {
+    "mtime": 1779569178.2919137,
+    "ast_hash": "a36e5f0f71ecdc2f1c822d2bdde19f89",
+    "semantic_hash": "a36e5f0f71ecdc2f1c822d2bdde19f89"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\README.md": {
+    "mtime": 1779660592.6321757,
+    "ast_hash": "550495556ddede23ec5aaaed4240cf1c",
+    "semantic_hash": "550495556ddede23ec5aaaed4240cf1c"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\.github\\workflows\\deploy-pages.yml": {
+    "mtime": 1779560345.184088,
+    "ast_hash": "d694e96760e81838d30249ca81a3105b",
+    "semantic_hash": "d694e96760e81838d30249ca81a3105b"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\index.html": {
+    "mtime": 1779559269.0040293,
+    "ast_hash": "0a9bf36ef3bfffd7bace14b9ee6b4c25",
+    "semantic_hash": "0a9bf36ef3bfffd7bace14b9ee6b4c25"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\README.md": {
+    "mtime": 1779660561.8020618,
+    "ast_hash": "9816d57d919034e28136c877dc33b671",
+    "semantic_hash": "9816d57d919034e28136c877dc33b671"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\404.html": {
+    "mtime": 1779560359.4319313,
+    "ast_hash": "0541b7d8b822ed6ea8eaaa06d26c03c8",
+    "semantic_hash": "0541b7d8b822ed6ea8eaaa06d26c03c8"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\mockups\\visual-directions.html": {
+    "mtime": 1779740609.7715988,
+    "ast_hash": "6df5acae7b11625970671e72bf993bcb",
+    "semantic_hash": "6df5acae7b11625970671e72bf993bcb"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\icon-192.png": {
+    "mtime": 1779559216.8064141,
+    "ast_hash": "fc0f88370186ebf8106afbed04ca2479",
+    "semantic_hash": "fc0f88370186ebf8106afbed04ca2479"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\icon-512.png": {
+    "mtime": 1779559216.8124154,
+    "ast_hash": "2fff12c25b5a6dcea55f2ce70d5c192e",
+    "semantic_hash": "2fff12c25b5a6dcea55f2ce70d5c192e"
+  },
+  "C:\\Users\\maisa\\OneDrive\\Documents\\New project\\webapp\\public\\icon.svg": {
+    "mtime": 1779559161.118577,
+    "ast_hash": "593b14899c163d26706e2037a8a6a1f7",
+    "semantic_hash": "593b14899c163d26706e2037a8a6a1f7"
+  }
+}

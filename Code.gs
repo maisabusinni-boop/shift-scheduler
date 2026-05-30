@@ -27,12 +27,50 @@ function doPost(e) {
     var file = getDatabaseFile_();
     var fileContent = file.getAs('application/json').getDataAsString();
     var workspace = JSON.parse(fileContent);
+    if (!workspace.registrationRequests) workspace.registrationRequests = [];
+
+    // Public request flow: creates a pending registration/password-reset request only.
+    if (action === 'submit_registration_request') {
+      var doctorName = String(request.doctorName || "").trim();
+      var gmail = String(request.gmail || "").trim().toLowerCase();
+      var requestedUsername = String(request.username || "").trim().toLowerCase();
+      var requestedPasswordHash = String(request.passwordHash || "");
+      if (!doctorName) return makeResponse_({ error: "Doctor name is required." });
+      if (!requestedUsername) return makeResponse_({ error: "Username is required." });
+      if (!requestedPasswordHash) return makeResponse_({ error: "Password is required." });
+      if (gmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gmail)) {
+        return makeResponse_({ error: "Invalid Gmail address." });
+      }
+      var duplicatePending = workspace.registrationRequests.some(function(item) {
+        return item.status === 'pending' && String(item.username || "").toLowerCase() === requestedUsername;
+      });
+      if (duplicatePending) {
+        return makeResponse_({ error: "A pending request already exists for this username." });
+      }
+      var registrationRequest = {
+        id: "reg-" + Utilities.getUuid(),
+        doctorName: doctorName,
+        gmail: gmail,
+        username: requestedUsername,
+        passwordHash: requestedPasswordHash,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        decidedAt: null,
+        decidedByUserId: null,
+        resolutionNote: ""
+      };
+      workspace.registrationRequests.push(registrationRequest);
+      workspace.updatedAt = new Date().toISOString();
+      file.setContent(JSON.stringify(workspace, null, 2));
+      return makeResponse_({ success: true, request: registrationRequest });
+    }
     
     // Bootstrap mode: If there are no users in the database, register the first user as a senior-planner
     var hasPlanners = workspace.users && workspace.users.some(function(u) { return u.active && u.role === 'senior-planner'; });
     if (!hasPlanners && action === 'bootstrap') {
       var newUser = {
         id: "user-" + Utilities.getUuid(),
+        username: username.toLowerCase(),
         email: (username.indexOf('@') !== -1 ? username : username + "@local").toLowerCase(),
         name: request.name || username,
         role: "senior-planner",
@@ -85,6 +123,7 @@ function doPost(e) {
       
       // Preserve critical server-side structures to prevent clients from overriding user credentials
       clientWorkspace.users = workspace.users;
+      clientWorkspace.registrationRequests = workspace.registrationRequests || [];
       clientWorkspace.updatedAt = new Date().toISOString();
       
       // Trigger Google Calendar Server-Side Sync (only for planners/chiefs)
@@ -107,7 +146,8 @@ function doPost(e) {
       }
       var newUsersList = request.users;
       var newDoctorsList = request.doctors;
-      if (!newUsersList && !newDoctorsList) {
+      var newRegistrationRequestsList = request.registrationRequests;
+      if (!newUsersList && !newDoctorsList && !newRegistrationRequestsList) {
         return makeResponse_({ error: "לא נשלחו נתונים לעדכון משתמשים או רופאים." });
       }
       if (newUsersList) {
@@ -115,6 +155,9 @@ function doPost(e) {
       }
       if (newDoctorsList) {
         workspace.doctors = newDoctorsList;
+      }
+      if (newRegistrationRequestsList) {
+        workspace.registrationRequests = newRegistrationRequestsList;
       }
       workspace.updatedAt = new Date().toISOString();
       file.setContent(JSON.stringify(workspace, null, 2));
@@ -241,6 +284,19 @@ function syncCalendar_(workspace) {
   if (workspace.doctors) {
     workspace.doctors.forEach(function(d) { doctorMap[d.id] = d; });
   }
+
+  var userEmailsByDoctorId = {};
+  if (workspace.users) {
+    workspace.users.forEach(function(u) {
+      if (!u || !u.active || !u.doctorId) return;
+      var email = normalizeCalendarRecipientEmail_(u.email);
+      if (!email) return;
+      if (!userEmailsByDoctorId[u.doctorId]) userEmailsByDoctorId[u.doctorId] = [];
+      if (userEmailsByDoctorId[u.doctorId].indexOf(email) === -1) {
+        userEmailsByDoctorId[u.doctorId].push(email);
+      }
+    });
+  }
   
   var roleMap = {};
   if (workspace.roles) {
@@ -290,7 +346,18 @@ function syncCalendar_(workspace) {
       // Compute details for calendar sync
       var title = role.name + " | " + doctor.name;
       var eventDate = new Date(dateStr);
-      var hashDigest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, title + "|" + dateStr);
+      var attendeeEmails = (userEmailsByDoctorId[doctor.id] || []).slice().sort();
+      if (!attendeeEmails.length) {
+        if (record && record.eventId) {
+          try {
+            var emptyEvent = calendar.getEventById(record.eventId);
+            if (emptyEvent) emptyEvent.deleteEvent();
+          } catch (e) {}
+          delete syncRecords[assignmentKey];
+        }
+        return;
+      }
+      var hashDigest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, title + "|" + dateStr + "|" + attendeeEmails.join(","));
       var hash = Utilities.base64Encode(hashDigest);
       
       if (record && record.eventId) {
@@ -302,36 +369,76 @@ function syncCalendar_(workspace) {
           var event = calendar.getEventById(record.eventId);
           if (event) {
             event.setTitle(title);
+            syncEventGuests_(event, attendeeEmails);
             record.hash = hash;
             record.lastSyncedAt = new Date().toISOString();
+            record.attendeeEmails = attendeeEmails;
           } else {
             // Re-create event if manually deleted in the Calendar UI
             event = calendar.createAllDayEvent(title, eventDate);
+            syncEventGuests_(event, attendeeEmails);
             record.eventId = event.getId();
             record.hash = hash;
             record.lastSyncedAt = new Date().toISOString();
+            record.attendeeEmails = attendeeEmails;
           }
         } catch(e) {
           // Re-create on error
           var event = calendar.createAllDayEvent(title, eventDate);
+          syncEventGuests_(event, attendeeEmails);
           record.eventId = event.getId();
           record.hash = hash;
           record.lastSyncedAt = new Date().toISOString();
+          record.attendeeEmails = attendeeEmails;
         }
       } else {
         // Create new event
         try {
           var event = calendar.createAllDayEvent(title, eventDate);
+          syncEventGuests_(event, attendeeEmails);
           syncRecords[assignmentKey] = {
             assignmentKey: assignmentKey,
             eventId: event.getId(),
             hash: hash,
-            lastSyncedAt: new Date().toISOString()
+            lastSyncedAt: new Date().toISOString(),
+            attendeeEmails: attendeeEmails
           };
         } catch(e) {
           Logger.log("Error creating calendar event: " + e.toString());
         }
       }
     });
+  });
+}
+
+function normalizeCalendarRecipientEmail_(email) {
+  if (!email) return "";
+  var normalized = String(email).trim().toLowerCase();
+  if (!normalized || /@local$/.test(normalized)) return "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : "";
+}
+
+function syncEventGuests_(event, attendeeEmails) {
+  var guestMap = {};
+  event.getGuestList().forEach(function(guest) {
+    guestMap[String(guest.getEmail()).trim().toLowerCase()] = guest;
+  });
+
+  var desiredMap = {};
+  attendeeEmails.forEach(function(email) {
+    desiredMap[email] = true;
+    if (!guestMap[email]) {
+      event.addGuest(email);
+    }
+  });
+
+  Object.keys(guestMap).forEach(function(email) {
+    if (!desiredMap[email]) {
+      try {
+        event.removeGuest(email);
+      } catch (err) {
+        Logger.log("Failed removing guest " + email + ": " + err.toString());
+      }
+    }
   });
 }

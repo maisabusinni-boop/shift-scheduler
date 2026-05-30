@@ -24,7 +24,7 @@ export function resolveSession(data: WorkspaceData, currentUser: SessionUser | n
   if (!hasPlanner) return { status: "bootstrap", currentUser: { ...currentUser, username }, appUser: null, role: "senior-planner", doctor: null };
 
   const appUser = data.users.find((user) => {
-    const uName = (user.email ? user.email.split('@')[0] : user.id).toLowerCase();
+    const uName = (user.username ?? (user.email ? user.email.split('@')[0] : user.id)).toLowerCase();
     return uName === username && user.active;
   });
   
@@ -36,6 +36,7 @@ export function resolveSession(data: WorkspaceData, currentUser: SessionUser | n
 export function createBootstrapPlanner(currentUser: SessionUser, passwordHash: string): AppUser {
   return {
     id: createId("user"),
+    username: normalizeUsername(currentUser.username),
     email: normalizeUsername(currentUser.username) + "@local",
     name: currentUser.name || currentUser.username,
     role: "senior-planner",

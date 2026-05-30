@@ -39,6 +39,7 @@ export type Doctor = {
 
 export type AppUser = {
   id: string;
+  username?: string;
   email: string;
   name: string;
   role: AppRole;
@@ -46,6 +47,21 @@ export type AppUser = {
   active: boolean;
   createdAt: string;
   passwordHash?: string;
+};
+
+export type RegistrationRequestStatus = "pending" | "approved" | "rejected";
+
+export type RegistrationRequest = {
+  id: string;
+  doctorName: string;
+  gmail: string;
+  username: string;
+  passwordHash: string;
+  status: RegistrationRequestStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  resolutionNote: string;
 };
 
 export type CurrentUser = {
@@ -111,6 +127,7 @@ export type CalendarSyncRecord = {
   eventId: string;
   hash: string;
   lastSyncedAt: string;
+  attendeeEmails: string[];
 };
 
 export type PublishSnapshot = {
@@ -216,6 +233,7 @@ export type WorkspaceData = {
   roles: Role[];
   doctors: Doctor[];
   users: AppUser[];
+  registrationRequests: RegistrationRequest[];
   schedules: Record<string, MonthSchedule>;
   changeRequests: ChangeRequest[];
   auditLog: AuditEntry[];
@@ -235,4 +253,5 @@ export type CalendarPreviewEvent = {
   title: string;
   date: string;
   hash: string;
+  attendeeEmails: string[];
 };

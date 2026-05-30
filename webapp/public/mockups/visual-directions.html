@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Department Scheduler Visual Directions</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Arial,
+          "Noto Sans Hebrew",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        line-height: 1.4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #eef2f6;
+        color: #172033;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .page {
+        display: grid;
+        gap: 28px;
+        margin: 0 auto;
+        max-width: 1680px;
+        padding: 28px;
+      }
+
+      .intro {
+        align-items: end;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .intro h1 {
+        font-size: 26px;
+        letter-spacing: 0;
+        line-height: 1.1;
+        margin: 0 0 8px;
+      }
+
+      .intro p {
+        color: #596579;
+        margin: 0;
+        max-width: 760px;
+      }
+
+      .compare-note {
+        background: #fff;
+        border: 1px solid #d8dfeb;
+        border-radius: 8px;
+        color: #475569;
+        padding: 12px 14px;
+      }
+
+      .mockups {
+        display: grid;
+        gap: 28px;
+      }
+
+      .mockup {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        min-height: 680px;
+        overflow: hidden;
+      }
+
+      .mockup-shell {
+        display: grid;
+        gap: 14px;
+        min-height: 680px;
+        padding: 18px;
+      }
+
+      .mock-title {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .mock-title h2 {
+        font-size: 20px;
+        line-height: 1.1;
+        margin: 0;
+      }
+
+      .mock-title p {
+        color: var(--muted);
+        margin: 4px 0 0;
+      }
+
+      .pill {
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 700;
+        gap: 7px;
+        min-height: 30px;
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+
+      .toolbar {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 7px;
+        overflow-x: auto;
+      }
+
+      .tab,
+      .btn {
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: inline-flex;
+        font-weight: 700;
+        gap: 7px;
+        min-height: 36px;
+        padding: 7px 11px;
+        white-space: nowrap;
+      }
+
+      .icon {
+        border: 1.5px solid currentColor;
+        border-radius: 4px;
+        display: inline-block;
+        height: 14px;
+        position: relative;
+        width: 14px;
+      }
+
+      .icon.grid::before,
+      .icon.grid::after {
+        background: currentColor;
+        content: "";
+        left: 3px;
+        position: absolute;
+        right: 3px;
+        top: 5px;
+        height: 1.5px;
+      }
+
+      .icon.grid::after {
+        bottom: 3px;
+        height: auto;
+        left: 5px;
+        right: auto;
+        top: 3px;
+        width: 1.5px;
+      }
+
+      .icon.warn {
+        border-radius: 999px;
+      }
+
+      .icon.cloud {
+        border-radius: 999px 999px 6px 6px;
+      }
+
+      .summary {
+        display: grid;
+        gap: 9px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-height: 66px;
+        padding: 10px;
+      }
+
+      .metric span {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        margin-bottom: 7px;
+      }
+
+      .metric b {
+        font-size: 18px;
+      }
+
+      .board-wrap {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      table {
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-left: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        min-width: 112px;
+        padding: 8px;
+        text-align: right;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      td {
+        height: 58px;
+        vertical-align: middle;
+      }
+
+      .date {
+        width: 74px;
+      }
+
+      .date strong {
+        color: var(--ink);
+        display: block;
+        font-size: 17px;
+      }
+
+      .date span,
+      .cell small {
+        color: var(--muted);
+        display: block;
+        font-size: 11px;
+      }
+
+      .role {
+        align-items: center;
+        display: flex;
+        gap: 7px;
+        justify-content: center;
+      }
+
+      .role i {
+        border-radius: 999px;
+        display: inline-block;
+        height: 9px;
+        width: 9px;
+      }
+
+      .cell {
+        border-radius: 7px;
+        display: grid;
+        gap: 2px;
+        min-height: 38px;
+        padding: 7px 8px;
+      }
+
+      .cell b {
+        font-size: 13px;
+      }
+
+      .blocked {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      .issue-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .issue {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 10px;
+      }
+
+      .side-notes {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .note-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .note-card h3 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+
+      .note-card p {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+
+      .clinical {
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --ink: #172033;
+        --muted: #64748b;
+        --line: #d8e0eb;
+        --accent: #1f5eff;
+        --accent-soft: #eaf1ff;
+        --ok: #117345;
+        --warning: #a15c00;
+        --shadow: 0 16px 38px rgba(23, 32, 51, 0.08);
+        background: var(--bg);
+      }
+
+      .clinical .mockup-shell {
+        background: linear-gradient(#f8fafc, #eef3f8);
+      }
+
+      .clinical .tab,
+      .clinical .btn,
+      .clinical .metric,
+      .clinical .note-card,
+      .clinical .board-wrap {
+        background: var(--panel);
+      }
+
+      .clinical .active,
+      .clinical .primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .clinical th {
+        background: #edf3fa;
+      }
+
+      .clinical .cell {
+        background: #f8fbff;
+        border: 1px solid #e3eaf5;
+      }
+
+      .clinical .warn-cell {
+        background: #fff7e7;
+        border-color: #efd68e;
+      }
+
+      .clinical .issue {
+        background: #fff8e8;
+        border-color: #efd68e;
+        color: var(--warning);
+      }
+
+      .ops {
+        --bg: #f4f1ea;
+        --panel: #fbfaf6;
+        --ink: #202734;
+        --muted: #6a6f7a;
+        --line: #d8d1c2;
+        --accent: #0f766e;
+        --accent-soft: #e2f4f1;
+        --ok: #16704a;
+        --warning: #a34e12;
+        --shadow: 0 16px 36px rgba(32, 39, 52, 0.1);
+        background: var(--bg);
+      }
+
+      .ops .mockup-shell {
+        background: var(--bg);
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .ops .rail {
+        background: #24313d;
+        border-radius: 8px;
+        color: #eef7f5;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+        padding: 14px;
+      }
+
+      .ops .rail h2 {
+        font-size: 17px;
+        margin: 0 0 8px;
+      }
+
+      .ops .rail .tab {
+        background: transparent;
+        border-color: transparent;
+        color: #c8d4da;
+        justify-content: flex-start;
+      }
+
+      .ops .rail .active {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+
+      .ops .content {
+        display: grid;
+        gap: 14px;
+      }
+
+      .ops .metric,
+      .ops .note-card,
+      .ops .board-wrap,
+      .ops .btn,
+      .ops .pill {
+        background: var(--panel);
+      }
+
+      .ops .primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .ops th {
+        background: #ebe5d8;
+      }
+
+      .ops .cell {
+        background: #fffefa;
+        border-left: 4px solid #b6c7c4;
+      }
+
+      .ops .warn-cell {
+        border-left-color: #d97706;
+        background: #fff7ed;
+      }
+
+      .ops .issue {
+        background: #fff7ed;
+        border-color: #fed7aa;
+        color: var(--warning);
+      }
+
+      .glass {
+        --bg: #eef7f3;
+        --panel: rgba(255, 255, 255, 0.84);
+        --ink: #132329;
+        --muted: #5b6e72;
+        --line: rgba(45, 78, 84, 0.18);
+        --accent: #0f7a95;
+        --accent-soft: #dff4f7;
+        --ok: #16704a;
+        --warning: #a55a00;
+        --shadow: 0 18px 44px rgba(19, 35, 41, 0.12);
+        background:
+          radial-gradient(circle at top right, rgba(15, 122, 149, 0.16), transparent 34%),
+          linear-gradient(145deg, #edf8f6, #f7fbfb 44%, #edf3fb);
+      }
+
+      .glass .mockup-shell {
+        backdrop-filter: blur(10px);
+      }
+
+      .glass .top-card,
+      .glass .metric,
+      .glass .note-card,
+      .glass .board-wrap,
+      .glass .tab,
+      .glass .btn,
+      .glass .pill {
+        background: var(--panel);
+        backdrop-filter: blur(16px);
+      }
+
+      .glass .top-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 14px;
+        padding: 14px;
+      }
+
+      .glass .primary,
+      .glass .active {
+        background: #132329;
+        border-color: #132329;
+        color: #fff;
+      }
+
+      .glass th {
+        background: rgba(232, 246, 247, 0.88);
+      }
+
+      .glass .cell {
+        background: rgba(255, 255, 255, 0.64);
+        border: 1px solid rgba(15, 122, 149, 0.13);
+      }
+
+      .glass .warn-cell {
+        background: #fff8e8;
+        border-color: #e9c468;
+      }
+
+      .glass .issue {
+        background: #fff8e8;
+        border-color: #e9c468;
+        color: var(--warning);
+      }
+
+      @media (max-width: 960px) {
+        .intro,
+        .ops .mockup-shell {
+          grid-template-columns: 1fr;
+        }
+
+        .summary,
+        .side-notes {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .ops .rail {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 620px) {
+        .page {
+          padding: 16px;
+        }
+
+        .summary,
+        .side-notes,
+        .ops .rail {
+          grid-template-columns: 1fr;
+        }
+
+        th,
+        td {
+          min-width: 104px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="intro">
+        <div>
+          <h1>Visual facelift directions for the shift scheduler</h1>
+          <p>Each direction uses the same roster workflow: month controls, role tabs, operational stats, validation issues, and the main RTL roster board.</p>
+        </div>
+        <div class="compare-note">Pick by feel first; implementation can borrow details from more than one option.</div>
+      </header>
+
+      <section class="mockups" aria-label="Visual style options">
+        <article class="mockup clinical">
+          <div class="mockup-shell">
+            <header class="mock-title">
+              <div>
+                <h2>Option A: Clean Clinical</h2>
+                <p>Bright, calm, close to the current app, but sharper and more polished.</p>
+              </div>
+              <span class="pill">Saved to Drive</span>
+            </header>
+            <div class="toolbar">
+              <nav class="tabs" aria-label="Main tabs">
+                <span class="tab active"><i class="icon grid"></i>לוח תורנויות</span>
+                <span class="tab"><i class="icon grid"></i>טיוטת סידור</span>
+                <span class="tab"><i class="icon warn"></i>אילוצים</span>
+                <span class="tab"><i class="icon cloud"></i>חיבור שרת</span>
+              </nav>
+              <div class="tabs">
+                <span class="btn">5 / 2026</span>
+                <span class="btn primary">פרסם</span>
+              </div>
+            </div>
+            <div class="summary">
+              <div class="metric"><span>שיבוצים</span><b>68</b></div>
+              <div class="metric"><span>שגיאות</span><b>0</b></div>
+              <div class="metric"><span>אזהרות</span><b>3</b></div>
+              <div class="metric"><span>רופאים פעילים</span><b>24</b></div>
+              <div class="metric"><span>סטטוס</span><b>טיוטה</b></div>
+            </div>
+            <div class="issue-strip">
+              <span class="issue">אזהרה: ד"ר לוי שובץ בסמיכות</span>
+              <span class="issue">אזהרה: חסר בכיר ביום שישי</span>
+            </div>
+            <div class="board-wrap">
+              <table aria-label="Roster preview">
+                <thead>
+                  <tr>
+                    <th class="date">תאריך</th>
+                    <th><span class="role"><i style="background:#2563eb"></i>תורן מתמחה</span></th>
+                    <th><span class="role"><i style="background:#16a34a"></i>בכיר א</span></th>
+                    <th><span class="role"><i style="background:#f59e0b"></i>אנגיו</span></th>
+                    <th><span class="role"><i style="background:#8b5cf6"></i>חצי בכיר</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th class="date"><strong>1</strong><span>שישי</span></th>
+                    <td><div class="cell"><b>ד"ר כהן</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>מאושר</small></div></td>
+                    <td><div class="cell warn-cell"><b>ד"ר ברק</b><small>בדיקה נדרשת</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                  </tr>
+                  <tr>
+                    <th class="date"><strong>2</strong><span>שבת</span></th>
+                    <td><div class="cell"><b>ד"ר מזרחי</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר רוזן</b><small>מאושר</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>משמרת קצרה</small></div></td>
+                  </tr>
+                  <tr>
+                    <th class="date"><strong>3</strong><span>ראשון</span></th>
+                    <td><div class="cell"><b>ד"ר לוי</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר ברק</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>מאושר</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="side-notes">
+              <div class="note-card"><h3>Why choose this</h3><p>Best if users like the current layout and mainly want it to feel more modern, trustworthy, and easier to scan.</p></div>
+              <div class="note-card"><h3>Tradeoff</h3><p>Conservative. It will not feel like a completely new product.</p></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="mockup ops">
+          <div class="mockup-shell">
+            <aside class="rail">
+              <h2>Option B: Command Center</h2>
+              <span class="tab active"><i class="icon grid"></i>לוח תורנויות</span>
+              <span class="tab"><i class="icon grid"></i>טיוטת סידור</span>
+              <span class="tab"><i class="icon warn"></i>אילוצים</span>
+              <span class="tab"><i class="icon cloud"></i>יומן Google</span>
+            </aside>
+            <div class="content">
+              <header class="mock-title">
+                <div>
+                  <h2>שיבוץ מחלקתי</h2>
+                  <p>Operational, compact, with navigation moved into a steady side rail.</p>
+                </div>
+                <span class="pill">טיוטה פתוחה</span>
+              </header>
+              <div class="toolbar">
+                <div class="tabs">
+                  <span class="btn">מאי</span>
+                  <span class="btn">2026</span>
+                </div>
+                <div class="tabs">
+                  <span class="btn">בדוק שגיאות</span>
+                  <span class="btn primary">פרסם</span>
+                </div>
+              </div>
+              <div class="summary">
+                <div class="metric"><span>כיסוי</span><b>92%</b></div>
+                <div class="metric"><span>שגיאות</span><b>0</b></div>
+                <div class="metric"><span>אזהרות</span><b>3</b></div>
+                <div class="metric"><span>בקשות</span><b>5</b></div>
+                <div class="metric"><span>שמירה</span><b>עודכן</b></div>
+              </div>
+              <div class="board-wrap">
+                <table aria-label="Roster preview">
+                  <thead>
+                    <tr>
+                      <th class="date">תאריך</th>
+                      <th><span class="role"><i style="background:#2563eb"></i>תורן מתמחה</span></th>
+                      <th><span class="role"><i style="background:#16a34a"></i>בכיר א</span></th>
+                      <th><span class="role"><i style="background:#f59e0b"></i>אנגיו</span></th>
+                      <th><span class="role"><i style="background:#8b5cf6"></i>חצי בכיר</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th class="date"><strong>1</strong><span>שישי</span></th>
+                      <td><div class="cell"><b>ד"ר כהן</b><small>מתמחה</small></div></td>
+                      <td><div class="cell"><b>ד"ר אבני</b><small>בכיר</small></div></td>
+                      <td><div class="cell warn-cell"><b>ד"ר ברק</b><small>אזהרה</small></div></td>
+                      <td><span class="blocked">לא פעיל</span></td>
+                    </tr>
+                    <tr>
+                      <th class="date"><strong>2</strong><span>שבת</span></th>
+                      <td><div class="cell"><b>ד"ר מזרחי</b><small>מתמחה</small></div></td>
+                      <td><div class="cell"><b>ד"ר רוזן</b><small>בכיר</small></div></td>
+                      <td><span class="blocked">לא פעיל</span></td>
+                      <td><div class="cell"><b>ד"ר אבני</b><small>חצי</small></div></td>
+                    </tr>
+                    <tr>
+                      <th class="date"><strong>3</strong><span>ראשון</span></th>
+                      <td><div class="cell"><b>ד"ר לוי</b><small>מתמחה</small></div></td>
+                      <td><div class="cell"><b>ד"ר ברק</b><small>בכיר</small></div></td>
+                      <td><div class="cell"><b>ד"ר אבני</b><small>אנגיו</small></div></td>
+                      <td><span class="blocked">לא פעיל</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="side-notes">
+                <div class="note-card"><h3>Why choose this</h3><p>Best for planners who live in the system every day and want a denser, dashboard-like workspace.</p></div>
+                <div class="note-card"><h3>Tradeoff</h3><p>The strongest departure from the current app. It would touch navigation layout more deeply.</p></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="mockup glass">
+          <div class="mockup-shell">
+            <div class="top-card">
+              <header class="mock-title">
+                <div>
+                  <h2>Option C: Soft Modern</h2>
+                  <p>Airier, friendlier, still structured enough for a real hospital schedule.</p>
+                </div>
+                <span class="pill">נשמר עכשיו</span>
+              </header>
+              <div class="toolbar">
+                <nav class="tabs" aria-label="Main tabs">
+                  <span class="tab active"><i class="icon grid"></i>לוח תורנויות</span>
+                  <span class="tab"><i class="icon grid"></i>טיוטת סידור</span>
+                  <span class="tab"><i class="icon warn"></i>אילוצים</span>
+                  <span class="tab"><i class="icon cloud"></i>חיבור שרת</span>
+                </nav>
+                <div class="tabs">
+                  <span class="btn">מאי 2026</span>
+                  <span class="btn primary">פרסם</span>
+                </div>
+              </div>
+            </div>
+            <div class="summary">
+              <div class="metric"><span>שיבוצים</span><b>68</b></div>
+              <div class="metric"><span>שגיאות</span><b>0</b></div>
+              <div class="metric"><span>אזהרות</span><b>3</b></div>
+              <div class="metric"><span>רופאים</span><b>24</b></div>
+              <div class="metric"><span>בקשות פתוחות</span><b>5</b></div>
+            </div>
+            <div class="board-wrap">
+              <table aria-label="Roster preview">
+                <thead>
+                  <tr>
+                    <th class="date">תאריך</th>
+                    <th><span class="role"><i style="background:#2563eb"></i>תורן מתמחה</span></th>
+                    <th><span class="role"><i style="background:#16a34a"></i>בכיר א</span></th>
+                    <th><span class="role"><i style="background:#f59e0b"></i>אנגיו</span></th>
+                    <th><span class="role"><i style="background:#8b5cf6"></i>חצי בכיר</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th class="date"><strong>1</strong><span>שישי</span></th>
+                    <td><div class="cell"><b>ד"ר כהן</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>מאושר</small></div></td>
+                    <td><div class="cell warn-cell"><b>ד"ר ברק</b><small>בדיקה</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                  </tr>
+                  <tr>
+                    <th class="date"><strong>2</strong><span>שבת</span></th>
+                    <td><div class="cell"><b>ד"ר מזרחי</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר רוזן</b><small>מאושר</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>משמרת קצרה</small></div></td>
+                  </tr>
+                  <tr>
+                    <th class="date"><strong>3</strong><span>ראשון</span></th>
+                    <td><div class="cell"><b>ד"ר לוי</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר ברק</b><small>מאושר</small></div></td>
+                    <td><div class="cell"><b>ד"ר אבני</b><small>מאושר</small></div></td>
+                    <td><span class="blocked">לא פעיל</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="side-notes">
+              <div class="note-card"><h3>Why choose this</h3><p>Best if the app should feel more premium and pleasant without becoming flashy.</p></div>
+              <div class="note-card"><h3>Tradeoff</h3><p>Softer surfaces may need careful contrast checks in the full production UI.</p></div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
