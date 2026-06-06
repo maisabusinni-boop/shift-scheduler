@@ -1,15 +1,9 @@
 import { cellKey } from "@/domain";
+import type { MonthDay } from "@/month";
 import type { MonthSchedule, Role, RoleCode } from "@/types";
 
 export type ScheduleLens = "month" | "week" | "mine";
-export type MonthDays = Array<{
-  key: string;
-  day: number;
-  weekday: number;
-  weekdayLabel: string;
-  isFriday: boolean;
-  isSaturday: boolean;
-}>;
+export type MonthDays = MonthDay[];
 
 export function scheduleTodayKey(schedule: MonthSchedule, now = new Date()) {
   if (now.getFullYear() !== schedule.year || now.getMonth() + 1 !== schedule.month) return null;

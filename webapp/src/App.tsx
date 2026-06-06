@@ -643,7 +643,7 @@ export function App() {
         const role = roleByCode.get(roleCode);
         if (!role) continue;
         
-        if (isFridayOnlyRole(roleCode) && weekday !== 5) continue;
+        if (isFridayOnlyRole(roleCode) && !day.allowsFridayRoles) continue;
         
         // Rule: Saturday half-senior must match Friday senior-a
         if (roleCode === ROLE_CODES.HALF_SENIOR && weekday === 6) {
@@ -2052,7 +2052,8 @@ function MonthScheduleMap({
           <button
             type="button"
             key={day.key}
-            className={`${todayKey === day.key ? "today" : ""} ${mine ? "mine" : ""} ${inLens ? "in-lens" : ""}`}
+            className={`${todayKey === day.key ? "today" : ""} ${mine ? "mine" : ""} ${inLens ? "in-lens" : ""} ${day.isJewishHoliday ? "holiday-day" : ""}`}
+            title={day.holidayName ?? undefined}
             onClick={() => onSelectDay?.(day.key)}
           >
             <b>{day.day}</b>
@@ -2094,17 +2095,18 @@ function MobileRosterDayCards({
   return (
     <div className="mobile-roster-list">
       {days.map((day) => (
-        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""}`} key={day.key}>
+        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""} ${day.isJewishHoliday ? "holiday-day" : ""}`} key={day.key} title={day.holidayName ?? undefined}>
           <header className="mobile-roster-card-header">
             <strong>{day.day}</strong>
             <span>{day.weekdayLabel}</span>
             <small>{formatShortDate(day.key)}</small>
+            {day.holidayName ? <small className="holiday-name">{day.holidayName}</small> : null}
           </header>
           <div className="mobile-roster-rows">
             {roles.map((roleItem) => {
               const key = cellKey(day.key, roleItem.code);
               const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
-              const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+              const disabled = isFridayOnlyRole(roleItem.code) && !day.allowsFridayRoles;
               const issue = issueByCell.get(key);
               const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
               const mine = assignment.doctorId === ownDoctorId;
@@ -2262,12 +2264,12 @@ function Roster({
           <thead><tr><th className="sticky-date">תאריך</th>{roles.map((role) => <th key={role.code}><span className="role-title"><i style={{ background: role.color }} />{role.name}</span></th>)}</tr></thead>
           <tbody>
             {days.map((day) => (
-              <tr key={day.key}>
-                <th className="sticky-date"><strong>{day.day}</strong><span>{day.weekdayLabel}</span></th>
+              <tr className={day.isJewishHoliday ? "holiday-row" : ""} key={day.key} title={day.holidayName ?? undefined}>
+                <th className="sticky-date"><strong>{day.day}</strong><span>{day.weekdayLabel}</span>{day.holidayName ? <small className="holiday-name">{day.holidayName}</small> : null}</th>
                 {roles.map((role) => {
                   const key = cellKey(day.key, role.code);
                   const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
-                  const disabled = isFridayOnlyRole(role.code) && !day.isFriday;
+                  const disabled = isFridayOnlyRole(role.code) && !day.allowsFridayRoles;
                   const issue = issueByCell.get(key);
                   const options = eligibleDoctorsByRole.get(role.code) ?? [];
                   const availableOptions = options.filter((doctor) => !isDoctorBlockedForAssignment(schedule, doctor.id, day.key, role.code));
@@ -2568,12 +2570,12 @@ function MobilePublishedRosterDayCards({
   return (
     <div className="mobile-roster-list">
       {days.map((day) => (
-        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""}`} key={day.key}>
+        <article className={`mobile-roster-card ${ownAssignmentDayKeys.has(day.key) ? "mine-day" : ""} ${day.isJewishHoliday ? "holiday-day" : ""}`} key={day.key} title={day.holidayName ?? undefined}>
           <div className="mobile-roster-rows">
             {roles.map((roleItem) => {
               const key = cellKey(day.key, roleItem.code);
               const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
-              const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+              const disabled = isFridayOnlyRole(roleItem.code) && !day.allowsFridayRoles;
               if (disabled) return null;
               const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
               const selected = selectedExchangeCell?.date === day.key && selectedExchangeCell.roleCode === roleItem.code;
@@ -2928,15 +2930,16 @@ function PublishedRoster({
           </thead>
           <tbody>
             {days.map((day) => (
-              <tr className={ownAssignmentDayKeys.has(day.key) ? "own-assignment-day" : ""} key={day.key}>
+              <tr className={`${ownAssignmentDayKeys.has(day.key) ? "own-assignment-day" : ""} ${day.isJewishHoliday ? "holiday-row" : ""}`} key={day.key} title={day.holidayName ?? undefined}>
                 <th className="sticky-date">
                   <strong>{day.day}</strong>
                   <span>{day.weekdayLabel}</span>
+                  {day.holidayName ? <small className="holiday-name">{day.holidayName}</small> : null}
                 </th>
                 {roles.map((roleItem) => {
                   const key = cellKey(day.key, roleItem.code);
                   const assignment = schedule.assignments[key] ?? { doctorId: null, pending: false };
-                  const disabled = isFridayOnlyRole(roleItem.code) && !day.isFriday;
+                  const disabled = isFridayOnlyRole(roleItem.code) && !day.allowsFridayRoles;
                   const assignedDoc = assignment.doctorId ? doctorsById.get(assignment.doctorId) : null;
 
                   const draggable = changeMode === "exchange" && !disabled && canDragCell(assignment);

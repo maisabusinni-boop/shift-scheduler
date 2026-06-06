@@ -603,9 +603,18 @@ textarea {
   border-color: var(--blue);
 }
 
+.schedule-month-map button.holiday-day {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
 .schedule-month-map button.mine {
   background: rgba(22, 163, 74, 0.1);
   border-color: rgba(22, 163, 74, 0.28);
+}
+
+.schedule-month-map button.mine.holiday-day {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.92), rgba(220, 252, 231, 0.92));
 }
 
 .schedule-month-map b {
@@ -845,6 +854,25 @@ textarea {
   font-size: 12px;
 }
 
+.holiday-name {
+  color: #854d0e;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.roster-table tr.holiday-row th,
+.roster-table tr.holiday-row td {
+  background: #fef3c7;
+}
+
+.roster-table tr.holiday-row .sticky-date {
+  background: #fde68a !important;
+  border-inline-start: 4px solid #f59e0b;
+}
+
 .role-title {
   align-items: center;
   display: flex;
@@ -896,6 +924,11 @@ textarea {
 .roster-table tr.own-assignment-day td {
   background: rgba(22, 163, 74, 0.08);
   box-shadow: inset 0 2px 0 rgba(22, 163, 74, 0.55), inset 0 -2px 0 rgba(22, 163, 74, 0.55);
+}
+
+.roster-table tr.own-assignment-day.holiday-row th,
+.roster-table tr.own-assignment-day.holiday-row td {
+  background: #dcfce7;
 }
 
 .roster-table tr.own-assignment-day .sticky-date {
@@ -1632,6 +1665,18 @@ body.dark .registration-modal-panel {
     box-shadow: 0 10px 24px rgba(22, 163, 74, 0.1);
   }
 
+  .mobile-roster-card.holiday-day {
+    border-color: rgba(245, 158, 11, 0.52);
+  }
+
+  .mobile-roster-card.holiday-day .mobile-roster-card-header {
+    background: #fde68a;
+  }
+
+  .mobile-roster-card.holiday-day .mobile-roster-row {
+    background: #fffbeb;
+  }
+
   .mobile-roster-card-header {
     align-items: center;
     background: var(--header);
@@ -1648,6 +1693,11 @@ body.dark .registration-modal-panel {
 
   .mobile-roster-card-header small {
     color: var(--muted);
+  }
+
+  .mobile-roster-card-header .holiday-name {
+    color: #854d0e;
+    grid-column: 2 / -1;
   }
 
   .mobile-roster-rows {

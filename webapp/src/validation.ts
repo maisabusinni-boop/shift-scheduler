@@ -1,5 +1,5 @@
 import { cellKey, exclusionRoleCodesForAssignment, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
-import { nextDayKey, previousDayKey } from "@/month";
+import { isFridayRoleAllowedDate, nextDayKey, previousDayKey } from "@/month";
 import type { Doctor, MonthSchedule, Role, ValidationIssue } from "@/types";
 
 function issue(message: string, severity: ValidationIssue["severity"], date?: string, roleCode?: Role["code"]): ValidationIssue {
@@ -31,8 +31,7 @@ export function validateSchedule(schedule: MonthSchedule, roles: Role[], doctors
     const doctor = assignment.doctorId ? doctorById.get(assignment.doctorId) : null;
     if (!role) return;
 
-    const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-    if (isFridayOnlyRole(role.code) && weekday !== 5 && assignment.doctorId) {
+    if (isFridayOnlyRole(role.code) && !isFridayRoleAllowedDate(date) && assignment.doctorId) {
       issues.push(issue(`${role.name} זמין רק בימי שישי.`, "error", date, role.code));
     }
 

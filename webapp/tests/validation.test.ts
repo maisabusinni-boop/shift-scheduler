@@ -75,4 +75,18 @@ describe("validateSchedule", () => {
     const issues = validateSchedule(schedule, roles, doctors);
     expect(issues.some((issue) => issue.severity === "warning" && issue.message.includes("יום ראשון"))).toBe(true);
   });
+
+  it("allows Friday morning roles on major Jewish holidays", () => {
+    const schedule = createEmptySchedule(2026, 9);
+    schedule.assignments[cellKey("2026-09-21", ROLE_CODES.FRIDAY_MORNING_SENIOR)] = { doctorId: "senior", pending: false };
+    const issues = validateSchedule(schedule, roles, doctors);
+    expect(issues.some((issue) => issue.severity === "error" && issue.roleCode === ROLE_CODES.FRIDAY_MORNING_SENIOR)).toBe(false);
+  });
+
+  it("blocks Friday morning roles on regular non-Friday weekdays", () => {
+    const schedule = createEmptySchedule(2026, 9);
+    schedule.assignments[cellKey("2026-09-14", ROLE_CODES.FRIDAY_MORNING_SENIOR)] = { doctorId: "senior", pending: false };
+    const issues = validateSchedule(schedule, roles, doctors);
+    expect(issues.some((issue) => issue.severity === "error" && issue.roleCode === ROLE_CODES.FRIDAY_MORNING_SENIOR)).toBe(true);
+  });
 });

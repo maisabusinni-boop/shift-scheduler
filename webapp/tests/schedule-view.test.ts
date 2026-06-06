@@ -64,4 +64,16 @@ describe("schedule view helpers", () => {
     expect(view.visibleDays).toHaveLength(0);
     expect(view.mineCount).toBe(0);
   });
+
+  it("keeps holiday metadata in schedule view days", () => {
+    const schedule = createEmptySchedule(2026, 9);
+    const days = buildMonthDays(2026, 9);
+
+    const view = buildScheduleView(schedule, roles, days, "month", 0, null);
+    const yomKippur = view.visibleDays.find((day) => day.key === "2026-09-21");
+
+    expect(yomKippur?.isJewishHoliday).toBe(true);
+    expect(yomKippur?.allowsFridayRoles).toBe(true);
+    expect(yomKippur?.holidayName).toContain("כִּפּוּר");
+  });
 });
