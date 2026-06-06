@@ -1,4 +1,5 @@
 import { roles } from "@/domain";
+import { ensureAdminAccount } from "@/adminAccount";
 import type { WorkspaceData } from "@/types";
 
 type LegacyWorkspace = Omit<WorkspaceData, "schemaVersion" | "users" | "registrationRequests" | "changeRequests" | "auditLog"> & {
@@ -61,7 +62,7 @@ function normalizeWorkspace(data: WorkspaceData): WorkspaceData {
     username: (user.username ?? user.email.split("@")[0] ?? user.id).trim().toLowerCase()
   }));
 
-  return {
+  return ensureAdminAccount({
     ...data,
     roles,
     users,
@@ -89,5 +90,5 @@ function normalizeWorkspace(data: WorkspaceData): WorkspaceData {
           ])
       )
     }
-  };
+  });
 }

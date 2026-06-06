@@ -1,5 +1,5 @@
 export type DoctorGroup = "resident" | "senior";
-export type AppRole = "resident" | "senior" | "chief-resident" | "senior-planner";
+export type AppRole = "resident" | "senior" | "chief-resident" | "senior-planner" | "admin";
 
 export type EligibilityRule =
   | "resident-only"

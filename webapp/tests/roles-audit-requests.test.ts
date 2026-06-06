@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { removeDoctorAndLinkedAccess } from "@/admin";
+import { ADMIN_PASSWORD_HASH, ensureAdminAccount } from "@/adminAccount";
 import { createAuditEntry, isAuditEntryVisibleForSchedule } from "@/audit";
 import { createBootstrapPlanner, resolveSession, type SessionUser } from "@/auth";
 import { ROLE_CODES } from "@/domain";
 import { migrateWorkspace } from "@/migration";
 import { canEditRoster, canManageUsers, canPublish, canSeeSchedule } from "@/permissions";
-import { approveRegistrationAsMerge, createRegistrationRequest } from "@/registration";
+import { approveRegistrationAsMerge, approveRegistrationAsNew, createRegistrationRequest } from "@/registration";
 import { createChangeRequest, nextRequestStatusForDecision } from "@/requests";
 import { createSampleWorkspace } from "@/sampleData";
 import type { AppUser } from "@/types";
@@ -15,6 +16,7 @@ const testUser: SessionUser = { username: "planner", name: "Planner" };
 describe("Username role resolution", () => {
   it("lets the first signed-in user bootstrap as senior planner", () => {
     const data = createSampleWorkspace();
+    data.users = data.users.filter((user) => user.role !== "admin");
     const session = resolveSession(data, testUser);
     expect(session.status).toBe("bootstrap");
     expect(session.role).toBe("senior-planner");
@@ -28,8 +30,19 @@ describe("Username role resolution", () => {
     expect(resolveSession(data, { username: "unknown", name: "Unknown" }).status).toBe("blocked");
   });
 
+  it("seeds and recognizes the fixed admin account", () => {
+    const data = ensureAdminAccount({ ...createSampleWorkspace(), users: [] });
+    const admin = data.users.find((user) => user.username === "admin");
+    expect(admin?.role).toBe("admin");
+    expect(admin?.passwordHash).toBe(ADMIN_PASSWORD_HASH);
+    const session = resolveSession(data, { username: "admin", name: "admin" });
+    expect(session.status).toBe("recognized");
+    expect(session.role).toBe("admin");
+  });
+
   it("allows recovery bootstrap if users exist but no active planner exists", () => {
     const data = createSampleWorkspace();
+    data.users = data.users.filter((user) => user.role !== "admin");
     data.users.push({
       id: "stale-user",
       email: "resident@local",
@@ -56,8 +69,10 @@ describe("permissions", () => {
   it("keeps publish and user management planner-only", () => {
     expect(canPublish("senior-planner")).toBe(true);
     expect(canPublish("chief-resident")).toBe(false);
+    expect(canPublish("admin")).toBe(true);
     expect(canManageUsers("senior-planner")).toBe(true);
     expect(canManageUsers("chief-resident")).toBe(false);
+    expect(canManageUsers("admin")).toBe(true);
   });
 
   it("allows chief and planner to edit draft roster only", () => {
@@ -169,6 +184,30 @@ describe("requests and audit", () => {
     expect(entry.after).toEqual({ doctorId: "doc-1", pending: false });
   });
 
+  it("records admin view-as audit metadata with admin user id and effective role", () => {
+    const data = createSampleWorkspace();
+    const entry = createAuditEntry(
+      {
+        googleUser: { email: "admin@local", name: "admin resident" },
+        appUserId: "user-admin",
+        appRole: "resident",
+        deviceId: "device-1",
+        driveSync: data.driveSync
+      },
+      {
+        action: "exclusion-create",
+        entityType: "exclusion",
+        entityId: "ex-1",
+        scheduleKey: "2026-05",
+        before: null,
+        after: { doctorId: "doc-cohen" }
+      }
+    );
+    expect(entry.actorUserId).toBe("user-admin");
+    expect(entry.actorName).toBe("admin resident");
+    expect(entry.actorRole).toBe("resident");
+  });
+
   it("stores published change metadata for the visual change log", () => {
     const data = createSampleWorkspace();
     const changeDetails = {
@@ -266,7 +305,7 @@ describe("migration", () => {
 
     const migrated = migrateWorkspace(legacy);
     expect(migrated.schemaVersion).toBe(2);
-    expect(migrated.users).toEqual([]);
+    expect(migrated.users.some((user) => user.username === "admin" && user.role === "admin")).toBe(true);
     expect(migrated.registrationRequests).toEqual([]);
     expect(migrated.changeRequests).toEqual([]);
     expect(migrated.auditLog).toEqual([]);
@@ -327,5 +366,33 @@ describe("registration requests", () => {
     expect(linkedUser?.passwordHash).toBe("new-hash");
     expect(linkedUser?.username).toBe("new");
     expect(merged.registrationRequests[0].status).toBe("approved");
+  });
+
+  it("allows admin-driven approval of a senior planner account", () => {
+    const data = createSampleWorkspace();
+    data.registrationRequests.push({
+      id: "reg-planner",
+      doctorName: "Planner",
+      gmail: "",
+      username: "planner2",
+      passwordHash: "planner-hash",
+      status: "pending",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      decidedAt: null,
+      decidedByUserId: null,
+      resolutionNote: ""
+    });
+
+    const approved = approveRegistrationAsNew(data, {
+      requestId: "reg-planner",
+      group: "senior",
+      role: "senior-planner",
+      canAngio: false,
+      decidedByUserId: "user-admin"
+    }, "2026-01-03T00:00:00.000Z");
+
+    const planner = approved.users.find((user) => user.username === "planner2");
+    expect(planner?.role).toBe("senior-planner");
+    expect(approved.registrationRequests.find((request) => request.id === "reg-planner")?.decidedByUserId).toBe("user-admin");
   });
 });

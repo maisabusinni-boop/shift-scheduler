@@ -36,6 +36,6 @@ export function createChangeRequest(input: {
 
 export function nextRequestStatusForDecision(status: ChangeRequest["status"], decision: "approve" | "reject", actorRole: AppRole) {
   if (decision === "reject") return "rejected" as const;
-  if (actorRole === "senior-planner" || actorRole === "chief-resident") return "approved" as const;
+  if (actorRole === "senior-planner" || actorRole === "chief-resident" || actorRole === "admin") return "approved" as const;
   return status;
 }

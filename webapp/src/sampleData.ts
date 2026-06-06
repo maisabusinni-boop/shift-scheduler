@@ -1,4 +1,5 @@
 import { createId, roles } from "@/domain";
+import { ensureAdminAccount } from "@/adminAccount";
 import { buildMonthDays, monthKey } from "@/month";
 import type { Doctor, MonthSchedule, WorkspaceData } from "@/types";
 
@@ -60,7 +61,7 @@ export function createSampleWorkspace(): WorkspaceData {
     };
   }
 
-  return {
+  return ensureAdminAccount({
     schemaVersion: 2,
     workspace: {
       name: "שיבוץ מחלקתי",
@@ -92,7 +93,7 @@ export function createSampleWorkspace(): WorkspaceData {
       lastSavedVersion: null
     },
     updatedAt: new Date().toISOString()
-  };
+  });
 }
 
 export function cloneWorkspace(data: WorkspaceData): WorkspaceData {

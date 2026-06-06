@@ -7,6 +7,9 @@
  * - Who has access: Anyone (anonymous)
  */
 
+var ADMIN_USERNAME = "admin";
+var ADMIN_PASSWORD_HASH = "d9ba7b80630bd458c838b4845c325015939a38fc40e1567e1c543eda05c9a096";
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -26,7 +29,7 @@ function doPost(e) {
     // Load database JSON file from Google Drive
     var file = getDatabaseFile_();
     var fileContent = file.getAs('application/json').getDataAsString();
-    var workspace = JSON.parse(fileContent);
+    var workspace = ensureAdminAccount_(JSON.parse(fileContent));
     if (!workspace.registrationRequests) workspace.registrationRequests = [];
 
     // Public request flow: creates a pending registration/password-reset request only.
@@ -66,8 +69,8 @@ function doPost(e) {
     }
     
     // Bootstrap mode: If there are no users in the database, register the first user as a senior-planner
-    var hasPlanners = workspace.users && workspace.users.some(function(u) { return u.active && u.role === 'senior-planner'; });
-    if (!hasPlanners && action === 'bootstrap') {
+    var hasManagers = workspace.users && workspace.users.some(function(u) { return u.active && (u.role === 'senior-planner' || u.role === 'admin'); });
+    if (!hasManagers && action === 'bootstrap') {
       var newUser = {
         id: "user-" + Utilities.getUuid(),
         username: username.toLowerCase(),
@@ -127,7 +130,7 @@ function doPost(e) {
       clientWorkspace.updatedAt = new Date().toISOString();
       
       // Trigger Google Calendar Server-Side Sync (only for planners/chiefs)
-      if (user.role === 'senior-planner' || user.role === 'chief-resident') {
+      if (isPlannerLike_(user) || user.role === 'chief-resident') {
         try {
           syncCalendar_(clientWorkspace);
         } catch (calErr) {
@@ -141,7 +144,7 @@ function doPost(e) {
     
     // Save updated users and doctors list (Admin only)
     if (action === 'admin_save_users') {
-      if (user.role !== 'senior-planner') {
+      if (!isPlannerLike_(user)) {
         return makeResponse_({ error: "רק מתכנן בכיר רשאי לנהל משתמשים וסיסמאות." });
       }
       var newUsersList = request.users;
@@ -161,6 +164,7 @@ function doPost(e) {
       if (newRegistrationRequestsList) {
         workspace.registrationRequests = newRegistrationRequestsList;
       }
+      workspace = ensureAdminAccount_(workspace);
       workspace.updatedAt = new Date().toISOString();
       file.setContent(JSON.stringify(workspace, null, 2));
       return makeResponse_({ success: true, data: workspace });
@@ -208,6 +212,43 @@ function reconcileUsersWithDoctors_(users, doctors) {
   return (users || []).filter(function(user) {
     return user && (!user.doctorId || doctorIds[user.doctorId]);
   });
+}
+
+function isPlannerLike_(user) {
+  return user && (user.role === 'senior-planner' || user.role === 'admin');
+}
+
+function ensureAdminAccount_(workspace) {
+  if (!workspace.users) workspace.users = [];
+  var adminIndex = -1;
+  for (var i = 0; i < workspace.users.length; i++) {
+    var user = workspace.users[i] || {};
+    var username = String(user.username || (user.email ? String(user.email).split('@')[0] : user.id) || "").trim().toLowerCase();
+    if (username === ADMIN_USERNAME || user.id === "user-admin") {
+      adminIndex = i;
+      break;
+    }
+  }
+
+  var existing = adminIndex >= 0 ? workspace.users[adminIndex] || {} : {};
+  var adminUser = {
+    id: "user-admin",
+    username: ADMIN_USERNAME,
+    email: "admin@local",
+    name: "admin",
+    role: "admin",
+    doctorId: null,
+    active: true,
+    createdAt: existing.createdAt || "2026-01-01T00:00:00.000Z",
+    passwordHash: ADMIN_PASSWORD_HASH
+  };
+
+  if (adminIndex >= 0) {
+    workspace.users[adminIndex] = adminUser;
+  } else {
+    workspace.users.unshift(adminUser);
+  }
+  return workspace;
 }
 
 function getDatabaseFile_() {
@@ -269,6 +310,7 @@ function getDatabaseFile_() {
     updatedAt: new Date().toISOString()
   };
   
+  defaultWorkspace = ensureAdminAccount_(defaultWorkspace);
   var newFile = DriveApp.createFile(fileName, JSON.stringify(defaultWorkspace, null, 2), "application/json");
   prop.setProperty('DRIVE_FILE_ID', newFile.getId());
   return newFile;

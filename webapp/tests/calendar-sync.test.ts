@@ -91,7 +91,8 @@ describe("calendar preview routing", () => {
 
     const schedule = Object.values(data.schedules)[0];
     const firstPreview = await buildCalendarPreview(schedule, data.roles, data);
-    data.users[0].email = "cohen.updated@gmail.com";
+    const cohenUser = data.users.find((user) => user.id === "u1");
+    if (cohenUser) cohenUser.email = "cohen.updated@gmail.com";
     const secondPreview = await buildCalendarPreview(schedule, data.roles, data);
 
     const firstHash = firstPreview.find((event) => event.assignmentKey.endsWith("|resident-on-call"))?.hash;
@@ -124,7 +125,8 @@ describe("calendar migration defaults", () => {
 
     const migrated = migrateWorkspace(data);
 
-    expect(migrated.users[0].username).toBe("planner");
+    expect(migrated.users.find((user) => user.email === "planner@local")?.username).toBe("planner");
+    expect(migrated.users.find((user) => user.username === "admin")?.role).toBe("admin");
     expect(migrated.calendar.syncRecords[assignmentKey].attendeeEmails).toEqual([]);
   });
 });

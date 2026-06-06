@@ -19,18 +19,21 @@ export function normalizeUsername(username: string) {
 export function resolveSession(data: WorkspaceData, currentUser: SessionUser | null): SessionState {
   if (!currentUser) return { status: "signed-out", currentUser: null, appUser: null, role: null, doctor: null };
   const username = normalizeUsername(currentUser.username);
-  
-  const hasPlanner = data.users.some((user) => user.active && user.role === "senior-planner");
-  if (!hasPlanner) return { status: "bootstrap", currentUser: { ...currentUser, username }, appUser: null, role: "senior-planner", doctor: null };
 
   const appUser = data.users.find((user) => {
     const uName = (user.username ?? (user.email ? user.email.split('@')[0] : user.id)).toLowerCase();
     return uName === username && user.active;
   });
-  
-  if (!appUser) return { status: "blocked", currentUser: { ...currentUser, username }, appUser: null, role: null, doctor: null };
-  const doctor = appUser.doctorId ? data.doctors.find((candidate) => candidate.id === appUser.doctorId) ?? null : null;
-  return { status: "recognized", currentUser: { ...currentUser, username }, appUser, role: appUser.role, doctor };
+
+  if (appUser) {
+    const doctor = appUser.doctorId ? data.doctors.find((candidate) => candidate.id === appUser.doctorId) ?? null : null;
+    return { status: "recognized", currentUser: { ...currentUser, username }, appUser, role: appUser.role, doctor };
+  }
+
+  const hasPlannerOrAdmin = data.users.some((user) => user.active && (user.role === "senior-planner" || user.role === "admin"));
+  if (!hasPlannerOrAdmin) return { status: "bootstrap", currentUser: { ...currentUser, username }, appUser: null, role: "senior-planner", doctor: null };
+
+  return { status: "blocked", currentUser: { ...currentUser, username }, appUser: null, role: null, doctor: null };
 }
 
 export function createBootstrapPlanner(currentUser: SessionUser, passwordHash: string): AppUser {

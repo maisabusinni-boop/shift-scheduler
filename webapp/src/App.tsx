@@ -96,6 +96,7 @@ import "./styles.css";
 type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange" | "auto-exchange";
 type AppliedPublishedChangeMode = Exclude<PublishedChangeMode, "auto-exchange">;
+type AdminViewRole = Exclude<AppRole, "admin">;
 type RegistrationApprovalDraft = {
   mode: "new" | "merge";
   doctorId: string;
@@ -128,7 +129,22 @@ const roleLabels: Record<AppRole, string> = {
   resident: "מתמחה",
   senior: "בכיר",
   "chief-resident": "צ׳יף מתמחים",
-  "senior-planner": "מתכנן בכיר"
+  "senior-planner": "מתכנן בכיר",
+  admin: "Admin"
+};
+
+const assignableRoleLabels: Record<AdminViewRole, string> = {
+  resident: roleLabels.resident,
+  senior: roleLabels.senior,
+  "chief-resident": roleLabels["chief-resident"],
+  "senior-planner": roleLabels["senior-planner"]
+};
+
+const adminActorLabels: Record<AdminViewRole, string> = {
+  resident: "admin resident",
+  senior: "admin senior",
+  "chief-resident": "admin chief resident",
+  "senior-planner": "admin senior planner"
 };
 
 const current = new Date();
@@ -183,6 +199,8 @@ export function App() {
     const creds = getLocalCredentials();
     return creds.username ? { username: creds.username, name: creds.username } : null;
   });
+  const [adminViewRole, setAdminViewRole] = useState<AdminViewRole | "">("");
+  const [adminViewDoctorId, setAdminViewDoctorId] = useState("");
   const [loginUrl, setLoginUrl] = useState(() => getWebAppUrl());
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -229,10 +247,34 @@ export function App() {
   const days = useMemo(() => buildMonthDays(year, month), [year, month]);
   const isMobile = useMediaQuery("(max-width: 760px)");
   const session = useMemo(() => resolveSession(workspace, currentUser), [workspace, currentUser]);
-  const role = session.role;
-  const appUser = session.status === "recognized" ? session.appUser : null;
-  const sessionDoctor = session.status === "recognized" ? session.doctor : null;
+  const actualAppUser = session.status === "recognized" ? session.appUser : null;
+  const isAdminUser = actualAppUser?.role === "admin";
+  const selectedAdminDoctor = isAdminUser && adminViewDoctorId
+    ? workspace.doctors.find((doctor) => doctor.id === adminViewDoctorId) ?? null
+    : null;
+  const role = isAdminUser && adminViewRole ? adminViewRole : session.role;
+  const appUser = actualAppUser && isAdminUser && adminViewRole
+    ? { ...actualAppUser, role: adminViewRole, doctorId: adminViewRole === "senior-planner" ? null : selectedAdminDoctor?.id ?? null }
+    : actualAppUser;
+  const sessionDoctor = actualAppUser && isAdminUser && adminViewRole
+    ? (adminViewRole === "senior-planner" ? null : selectedAdminDoctor)
+    : session.status === "recognized" ? session.doctor : null;
   const visibleTabs = useMemo(() => tabs.filter((item) => canSeeTab(item, role)), [role]);
+
+  useEffect(() => {
+    if (!isAdminUser) {
+      setAdminViewRole("");
+      setAdminViewDoctorId("");
+      return;
+    }
+    if (!adminViewRole || adminViewRole === "senior-planner") {
+      if (adminViewDoctorId) setAdminViewDoctorId("");
+      return;
+    }
+    const expectedGroup: DoctorGroup = adminViewRole === "senior" ? "senior" : "resident";
+    const validDoctor = workspace.doctors.some((doctor) => doctor.id === adminViewDoctorId && doctor.group === expectedGroup && doctor.active);
+    if (!validDoctor) setAdminViewDoctorId("");
+  }, [adminViewDoctorId, adminViewRole, isAdminUser, workspace.doctors]);
 
   useEffect(() => {
     if (workspace !== data) {
@@ -285,9 +327,10 @@ export function App() {
 
   function actorFor(next?: WorkspaceData): ActorContext {
     const target = next ?? workspace;
+    const adminActorName = isAdminUser && adminViewRole ? adminActorLabels[adminViewRole] : null;
     return {
-      googleUser: currentUser ? { email: currentUser.username + "@local", name: currentUser.name } : null,
-      appUserId: appUser?.id ?? null,
+      googleUser: currentUser ? { email: currentUser.username + "@local", name: adminActorName ?? currentUser.name } : null,
+      appUserId: actualAppUser?.id ?? appUser?.id ?? null,
       appRole: role ?? "unrecognized",
       deviceId,
       driveSync: target.driveSync
@@ -358,7 +401,7 @@ export function App() {
         const remote = await loadWorkspace();
         const remoteChanged = Boolean(lastSavedVersionRef.current && remote.updatedAt !== lastSavedVersionRef.current);
         if (remoteChanged) {
-          if (role !== "senior-planner") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
+          if (role !== "senior-planner" && role !== "admin") throw new Error("הקובץ בשרת השתנה. טען מחדש או בקש מהמתכנן הבכיר להכריע.");
           const overwrite = window.confirm("הקובץ בשרת השתנה מאז השמירה האחרונה. להחליף אותו בכל זאת? מומלץ קודם לייצא גיבוי.");
           if (!overwrite) {
             setSyncState((current) => ({ ...current, isSaving: false, isSavePending: true }));
@@ -542,6 +585,8 @@ export function App() {
   function handleLogout() {
     clearLocalCredentials();
     setCurrentUser(null);
+    setAdminViewRole("");
+    setAdminViewDoctorId("");
     setLoginPassword("");
     setMessage("התנתקת בהצלחה.");
   }
@@ -1184,9 +1229,13 @@ export function App() {
     const selectedDoctor = selectedDoctorId ? workspace.doctors.find(d => d.id === selectedDoctorId) : null;
     const targetAfterDoctor = isExchange ? sourceDoctor ?? null : selectedDoctor ?? null;
     if (!sourceDoctor || !targetAfterDoctor) return;
+    if (!canUsePlannerTools(role) && !appUser?.doctorId) {
+      setMessage("Admin view-as requires choosing a doctor for this action.");
+      return;
+    }
 
     const user = requireUser();
-    const isDirect = role === "senior-planner" || (role === "senior" && sourceDoctor.group === "senior");
+    const isDirect = canUsePlannerTools(role) || (role === "senior" && sourceDoctor.group === "senior");
     const changeCode = createChangeCode();
     const details: PublishedChangeDetails = {
       kind: mode,
@@ -1435,6 +1484,11 @@ export function App() {
 
   const canViewActiveSchedule = canSeeSchedule(role, schedule);
   const ownDoctorId = appUser?.doctorId ?? "";
+  const adminViewDoctorOptions = useMemo(() => {
+    if (!isAdminUser || !adminViewRole || adminViewRole === "senior-planner") return [];
+    const expectedGroup: DoctorGroup = adminViewRole === "senior" ? "senior" : "resident";
+    return workspace.doctors.filter((doctor) => doctor.active && doctor.group === expectedGroup);
+  }, [adminViewRole, isAdminUser, workspace.doctors]);
   const visibleExclusions = useMemo(() => {
     if (canUsePlannerTools(role)) return schedule.exclusions;
     if (!sessionDoctor) return schedule.exclusions.filter((item) => item.doctorId === ownDoctorId);
@@ -1587,6 +1641,15 @@ export function App() {
           <span>שם משתמש: {currentUser.username}</span>
         </div>
         {role ? <b>{roleLabels[role]}</b> : null}
+        {isAdminUser ? (
+          <AdminViewSwitcher
+            role={adminViewRole}
+            setRole={setAdminViewRole}
+            doctorId={adminViewDoctorId}
+            setDoctorId={setAdminViewDoctorId}
+            doctorOptions={adminViewDoctorOptions}
+          />
+        ) : null}
         <button className="danger" onClick={handleLogout}><Mail size={17} />התנתק</button>
       </section>
 
@@ -1751,7 +1814,7 @@ export function App() {
                   const roleName = workspace.roles.find(r => r.code === swapModalCell.roleCode)?.name ?? "";
                   const dateStr = swapModalCell.date.split("-").reverse().join("/");
                   const targetDoc = swapTargetDoctorId ? workspace.doctors.find(d => d.id === swapTargetDoctorId) : null;
-                  const isDirect = role === "senior-planner" || (role === "senior" && giverDoc?.group === "senior");
+                  const isDirect = canUsePlannerTools(role) || (role === "senior" && giverDoc?.group === "senior");
                   const isExchange = swapModalCell.mode === "exchange";
                   const sourceDate = swapModalCell.sourceDate ?? swapModalCell.date;
                   const sourceRoleCode = swapModalCell.sourceRoleCode ?? swapModalCell.roleCode;
@@ -1887,11 +1950,53 @@ export function App() {
 function canSeeTab(item: (typeof tabs)[number], role: AppRole | null) {
   if (!role) return false;
   if (item.plannerOnly) return canUsePlannerTools(role);
-  if (item.draftPlanner) return role === "senior-planner" || role === "chief-resident";
+  if (item.draftPlanner) return canEditDraftRoster(role);
   if (item.scheduleEditor) return true;
   if (item.requestReviewer) return canReviewRequests(role);
-  if (item.audit) return role === "senior-planner" || role === "chief-resident";
+  if (item.audit) return canReviewRequests(role);
   return true;
+}
+
+function AdminViewSwitcher({
+  role,
+  setRole,
+  doctorId,
+  setDoctorId,
+  doctorOptions
+}: {
+  role: AdminViewRole | "";
+  setRole: (value: AdminViewRole | "") => void;
+  doctorId: string;
+  setDoctorId: (value: string) => void;
+  doctorOptions: Doctor[];
+}) {
+  const needsDoctor = Boolean(role && role !== "senior-planner");
+  return (
+    <div className="form-row" style={{ alignItems: "end", gap: "8px", margin: 0 }}>
+      <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <span>Admin view</span>
+        <select
+          value={role}
+          onChange={(event) => {
+            setRole(event.target.value as AdminViewRole | "");
+            setDoctorId("");
+          }}
+        >
+          <option value="">Admin</option>
+          {Object.entries(assignableRoleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      {needsDoctor ? (
+        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <span>Doctor</span>
+          <select value={doctorId} onChange={(event) => setDoctorId(event.target.value)}>
+            <option value="">Choose doctor</option>
+            {doctorOptions.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
+          </select>
+        </label>
+      ) : null}
+    </div>
+  );
 }
 
 function BlockedUser({ email, recover }: { email: string; recover: () => void }) {
@@ -2729,7 +2834,7 @@ function PublishedRoster({
     if (!assignment.doctorId) return false;
     const assignedDoc = doctorsById.get(assignment.doctorId);
     if (!assignedDoc) return false;
-    if (role === "senior-planner") return true;
+    if (canUsePlannerTools(role)) return true;
     if (role === "senior") return assignedDoc.group === "senior";
     if (role === "resident" || role === "chief-resident") return assignedDoc.group === "resident";
     return false;
@@ -3225,7 +3330,7 @@ function PendingRegistrationRequests({
                       <option value="senior">בכיר</option>
                     </select>
                     <select value={draft.role} onChange={(event) => updateDraft(request, { role: event.target.value as AppRole })}>
-                      {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      {Object.entries(assignableRoleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                     <label className="check"><input type="checkbox" checked={draft.canAngio} onChange={(event) => updateDraft(request, { canAngio: event.target.checked })} />אנגיו</label>
                   </div>
@@ -3393,7 +3498,7 @@ function Doctors({
                       <input type="password" dir="ltr" value={password} onChange={(event) => setPasswordDrafts({ ...passwordDrafts, [doctor.id]: event.target.value })} placeholder="השאר ריק לשמירה על הקודמת" />
                     </label>
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>הרשאה במערכת
-                      <select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                      <select value={appRole} onChange={(event) => setRoleDrafts({ ...roleDrafts, [doctor.id]: event.target.value as AppRole })}>{Object.entries(assignableRoleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                     </label>
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>Calendar Gmail
                       <input dir="ltr" value={calendarEmail} onChange={(event) => setEmailDrafts({ ...emailDrafts, [doctor.id]: event.target.value })} placeholder="doctor@gmail.com" />
