@@ -12,6 +12,11 @@
   --good: #16a34a;
   --warn: #d97706;
   --bad: #dc2626;
+  --holiday-bg: #e0f2fe;
+  --holiday-header: #bae6fd;
+  --holiday-border: #0284c7;
+  --holiday-text: #0c4a6e;
+  --holiday-muted: #075985;
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05), 0 10px 15px -3px rgb(0 0 0 / 0.03);
   --shadow-hover: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
   --radius: 12px;
@@ -30,6 +35,11 @@ body.dark {
   --good: #22c55e;
   --warn: #f59e0b;
   --bad: #ef4444;
+  --holiday-bg: #172b3a;
+  --holiday-header: #21394c;
+  --holiday-border: #38bdf8;
+  --holiday-text: #f8fafc;
+  --holiday-muted: #bae6fd;
   --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   --shadow-hover: 0 25px 35px -5px rgba(0, 0, 0, 0.6), 0 12px 15px -8px rgba(0, 0, 0, 0.6);
 }
@@ -604,8 +614,9 @@ textarea {
 }
 
 .schedule-month-map button.holiday-day {
-  background: #fef3c7;
-  border-color: #f59e0b;
+  background: var(--holiday-bg);
+  border-color: var(--holiday-border);
+  color: var(--holiday-text);
 }
 
 .schedule-month-map button.mine {
@@ -614,7 +625,7 @@ textarea {
 }
 
 .schedule-month-map button.mine.holiday-day {
-  background: linear-gradient(135deg, rgba(254, 243, 199, 0.92), rgba(220, 252, 231, 0.92));
+  background: color-mix(in srgb, var(--holiday-bg) 72%, rgba(22, 163, 74, 0.28));
 }
 
 .schedule-month-map b {
@@ -855,7 +866,7 @@ textarea {
 }
 
 .holiday-name {
-  color: #854d0e;
+  color: var(--holiday-muted);
   display: block;
   font-size: 11px;
   font-weight: 800;
@@ -865,12 +876,24 @@ textarea {
 
 .roster-table tr.holiday-row th,
 .roster-table tr.holiday-row td {
-  background: #fef3c7;
+  background: var(--holiday-bg);
+  color: var(--holiday-text);
 }
 
 .roster-table tr.holiday-row .sticky-date {
-  background: #fde68a !important;
-  border-inline-start: 4px solid #f59e0b;
+  background: var(--holiday-header) !important;
+  border-inline-start: 4px solid var(--holiday-border);
+  color: var(--holiday-text);
+}
+
+.roster-table tr.holiday-row .sticky-date span,
+.roster-table tr.holiday-row select {
+  color: var(--holiday-text);
+}
+
+.roster-table tr.holiday-row select:focus {
+  background: color-mix(in srgb, var(--holiday-header) 74%, var(--panel));
+  color: var(--holiday-text);
 }
 
 .role-title {
@@ -928,7 +951,7 @@ textarea {
 
 .roster-table tr.own-assignment-day.holiday-row th,
 .roster-table tr.own-assignment-day.holiday-row td {
-  background: #dcfce7;
+  background: color-mix(in srgb, var(--holiday-bg) 74%, rgba(22, 163, 74, 0.2));
 }
 
 .roster-table tr.own-assignment-day .sticky-date {
@@ -1666,15 +1689,17 @@ body.dark .registration-modal-panel {
   }
 
   .mobile-roster-card.holiday-day {
-    border-color: rgba(245, 158, 11, 0.52);
+    border-color: color-mix(in srgb, var(--holiday-border) 72%, var(--line));
   }
 
   .mobile-roster-card.holiday-day .mobile-roster-card-header {
-    background: #fde68a;
+    background: var(--holiday-header);
+    color: var(--holiday-text);
   }
 
   .mobile-roster-card.holiday-day .mobile-roster-row {
-    background: #fffbeb;
+    background: var(--holiday-bg);
+    color: var(--holiday-text);
   }
 
   .mobile-roster-card-header {
@@ -1696,7 +1721,7 @@ body.dark .registration-modal-panel {
   }
 
   .mobile-roster-card-header .holiday-name {
-    color: #854d0e;
+    color: var(--holiday-muted);
     grid-column: 2 / -1;
   }
 
