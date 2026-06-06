@@ -150,11 +150,13 @@ function doPost(e) {
       if (!newUsersList && !newDoctorsList && !newRegistrationRequestsList) {
         return makeResponse_({ error: "לא נשלחו נתונים לעדכון משתמשים או רופאים." });
       }
-      if (newUsersList) {
-        workspace.users = newUsersList;
-      }
       if (newDoctorsList) {
         workspace.doctors = newDoctorsList;
+      }
+      if (newUsersList) {
+        workspace.users = reconcileUsersWithDoctors_(newUsersList, workspace.doctors);
+      } else if (newDoctorsList) {
+        workspace.users = reconcileUsersWithDoctors_(workspace.users || [], workspace.doctors);
       }
       if (newRegistrationRequestsList) {
         workspace.registrationRequests = newRegistrationRequestsList;
@@ -196,6 +198,16 @@ function doPost(e) {
 function makeResponse_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function reconcileUsersWithDoctors_(users, doctors) {
+  var doctorIds = {};
+  (doctors || []).forEach(function(doctor) {
+    if (doctor && doctor.id) doctorIds[doctor.id] = true;
+  });
+  return (users || []).filter(function(user) {
+    return user && (!user.doctorId || doctorIds[user.doctorId]);
+  });
 }
 
 function getDatabaseFile_() {

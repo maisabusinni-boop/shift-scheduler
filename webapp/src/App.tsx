@@ -23,6 +23,7 @@ import {
   Users,
   X
 } from "lucide-react";
+import { removeDoctorAndLinkedAccess } from "@/admin";
 import { createAuditEntry, isAuditEntryVisibleForSchedule, type ActorContext, type AuditInput } from "@/audit";
 import { resolveSession, type SessionUser } from "@/auth";
 import { buildCalendarPreview, normalizeCalendarId, normalizeCalendarRecipientEmail } from "@/calendar";
@@ -1037,41 +1038,27 @@ export function App() {
     }
   }
 
-  function removeDoctor(doctorId: string) {
+  async function removeDoctor(doctorId: string) {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל רופאים.");
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
     if (!doctor) return;
     const confirmed = window.confirm(`להסיר את ${doctor.name}? השיבוצים והאילוצים שלו יימחקו מהנתונים המקומיים.`);
     if (!confirmed) return;
-    commitChange({
-      mutator: (draft) => {
-        const before = {
-          doctor: draft.doctors.find((candidate) => candidate.id === doctorId) ?? null,
-          linkedUsers: draft.users.filter((user) => user.doctorId === doctorId),
-          schedules: Object.fromEntries(Object.entries(draft.schedules).map(([scheduleKey, item]) => [scheduleKey, {
-            assignments: Object.entries(item.assignments).filter(([, assignment]) => assignment.doctorId === doctorId).map(([key]) => key),
-            exclusions: item.exclusions.filter((exclusion) => exclusion.doctorId === doctorId).map((exclusion) => exclusion.id)
-          }]))
-        };
-        draft.doctors = draft.doctors.filter((candidate) => candidate.id !== doctorId);
-        draft.users = draft.users.map((user) => (user.doctorId === doctorId ? { ...user, doctorId: null, active: false } : user));
-        Object.values(draft.schedules).forEach((item) => {
-          Object.entries(item.assignments).forEach(([assignmentKey, assignment]) => {
-            if (assignment.doctorId === doctorId) item.assignments[assignmentKey] = { doctorId: null, pending: false };
-          });
-          item.exclusions = item.exclusions.filter((exclusion) => exclusion.doctorId !== doctorId);
-          item.validation.stale = true;
-        });
-        draft.changeRequests = draft.changeRequests.filter((request) => (
-          request.requesterDoctorId !== doctorId &&
-          request.currentDoctorId !== doctorId &&
-          request.proposedDoctorId !== doctorId
-        ));
-        return { action: "doctor-remove", entityType: "doctor", entityId: doctorId, before, after: null };
-      },
-      note: "הרופא הוסר."
-    });
+    const draft = ensureSchedule(cloneWorkspace(data), year, month);
+    const audit = removeDoctorAndLinkedAccess(draft, doctorId);
+    draft.updatedAt = new Date().toISOString();
+    if (audit) draft.auditLog.unshift(createAuditEntry(actorFor(draft), audit));
+    setAndPersist(draft);
+    setMessage("הרופא והגישה של המשתמש המקושר הוסרו.");
     setExpandedDoctorId((current) => (current === doctorId ? null : current));
+    if (!hasCredentials()) return;
+    try {
+      await saveWorkspace(draft);
+      const saved = await adminSaveUsers(draft.users, draft.doctors, draft.registrationRequests);
+      setAndPersist(saved, true);
+    } catch (err) {
+      setMessage("שמירת הסרת הגישה בשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+    }
   }
 
   function submitRequest() {

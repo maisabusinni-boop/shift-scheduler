@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { removeDoctorAndLinkedAccess } from "@/admin";
 import { createAuditEntry, isAuditEntryVisibleForSchedule } from "@/audit";
 import { createBootstrapPlanner, resolveSession, type SessionUser } from "@/auth";
 import { ROLE_CODES } from "@/domain";
@@ -68,6 +69,55 @@ describe("permissions", () => {
     expect(canSeeSchedule("resident", schedule)).toBe(true);
     schedule.status = "draft";
     expect(canSeeSchedule("resident", schedule)).toBe(false);
+  });
+});
+
+describe("admin user removal", () => {
+  it("fully removes linked user access when a doctor is deleted", () => {
+    const data = createSampleWorkspace();
+    const doctor = data.doctors[0];
+    data.users.push({
+      id: "chief-user",
+      username: "chief",
+      email: "chief@local",
+      name: "Chief",
+      role: "chief-resident",
+      doctorId: doctor.id,
+      active: true,
+      createdAt: new Date().toISOString()
+    });
+    const schedule = Object.values(data.schedules)[0];
+    schedule.assignments["2026-05-01|resident-on-call"] = { doctorId: doctor.id, pending: false };
+    schedule.exclusions.push({ id: "ex-1", doctorId: doctor.id, date: "2026-05-02", roleCode: null, reason: "away" });
+    data.changeRequests.push({
+      id: "request-1",
+      scheduleKey: schedule.key,
+      requesterDoctorId: doctor.id,
+      requesterUserId: "chief-user",
+      requesterRole: "chief-resident",
+      date: "2026-05-01",
+      roleCode: ROLE_CODES.RESIDENT_ON_CALL,
+      currentDoctorId: doctor.id,
+      proposedDoctorId: null,
+      reason: "remove",
+      status: "submitted",
+      resolutionNote: "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      decidedAt: null,
+      decidedByUserId: null,
+      appliedAt: null,
+      appliedByUserId: null
+    });
+
+    const audit = removeDoctorAndLinkedAccess(data, doctor.id);
+
+    expect(audit?.action).toBe("doctor-remove");
+    expect(data.doctors.some((item) => item.id === doctor.id)).toBe(false);
+    expect(data.users.some((user) => user.id === "chief-user")).toBe(false);
+    expect(schedule.assignments["2026-05-01|resident-on-call"]).toEqual({ doctorId: null, pending: false });
+    expect(schedule.exclusions).toHaveLength(0);
+    expect(data.changeRequests).toHaveLength(0);
   });
 });
 
