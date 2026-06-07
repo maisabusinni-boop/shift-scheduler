@@ -27,7 +27,7 @@ import { removeDoctorAndLinkedAccess } from "@/admin";
 import { createAuditEntry, isAuditEntryVisibleForSchedule, type ActorContext, type AuditInput } from "@/audit";
 import { resolveSession, type SessionUser } from "@/auth";
 import { buildCalendarPreview, normalizeCalendarId, normalizeCalendarRecipientEmail } from "@/calendar";
-import { cellKey, createId, doctorSortForRole, exclusionRoleCodesForAssignment, exclusionRoles, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
+import { cellKey, createId, doctorSortForRole, exclusionRoleCodesForAssignment, exclusionRolesForDoctor, isDoctorEligibleForRole, isFridayOnlyRole, ROLE_CODES } from "@/domain";
 import {
   getWebAppUrl,
   setWebAppUrl,
@@ -1495,6 +1495,25 @@ export function App() {
     const visibleDoctorIds = new Set(workspace.doctors.filter((doctor) => doctor.group === sessionDoctor.group).map((doctor) => doctor.id));
     return schedule.exclusions.filter((item) => visibleDoctorIds.has(item.doctorId));
   }, [ownDoctorId, role, schedule.exclusions, sessionDoctor, workspace.doctors]);
+  const exclusionDoctorId = canUsePlannerTools(role) ? exclusionForm.doctorId : ownDoctorId;
+  const selectedExclusionDoctor = useMemo(
+    () => workspace.doctors.find((doctor) => doctor.id === exclusionDoctorId) ?? null,
+    [exclusionDoctorId, workspace.doctors]
+  );
+  const allowedExclusionRoles = useMemo(() => exclusionRolesForDoctor(selectedExclusionDoctor), [selectedExclusionDoctor]);
+
+  useEffect(() => {
+    setExclusionRoleCodes((current) => {
+      if (!allowedExclusionRoles.length) return current.length ? [] : current;
+      const allowedCodes = new Set(allowedExclusionRoles.map((item) => item.code));
+      const fallbackCode = allowedExclusionRoles[0].code;
+      const sanitized = current.length
+        ? current.map((code) => allowedCodes.has(code) ? code : fallbackCode)
+        : [fallbackCode];
+      const unchanged = sanitized.length === current.length && sanitized.every((code, index) => code === current[index]);
+      return unchanged ? current : sanitized;
+    });
+  }, [allowedExclusionRoles]);
 
   if (!currentUser) {
     return (
@@ -1726,9 +1745,9 @@ export function App() {
               schedule={schedule}
               exclusions={visibleExclusions}
               doctors={workspace.doctors}
-              roles={exclusionRoles}
+              roles={allowedExclusionRoles}
               days={days}
-              form={{ ...exclusionForm, doctorId: canUsePlannerTools(role) ? exclusionForm.doctorId : ownDoctorId }}
+              form={{ ...exclusionForm, doctorId: exclusionDoctorId }}
               roleCodes={exclusionRoleCodes}
               canChooseDoctor={canUsePlannerTools(role)}
               setForm={setExclusionForm}
@@ -2463,6 +2482,7 @@ function Exclusions({
     const doctorB = doctors.find((doctor) => doctor.id === doctorIdB)?.name ?? "";
     return doctorA.localeCompare(doctorB, "he");
   });
+  const canAddRoleBlocker = roles.length > 0;
 
   return (
     <section className="panel exclusions-panel">
@@ -2489,7 +2509,7 @@ function Exclusions({
               {roleCodes.length > 1 ? <button aria-label="הסר תפקיד" onClick={() => setRoleCodes(roleCodes.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={16} /></button> : null}
             </div>
           ))}
-          <button onClick={() => setRoleCodes([...roleCodes, roles[0]?.code ?? ROLE_CODES.RESIDENT_ON_CALL])}><Plus size={16} />הוסף תפקיד</button>
+          <button disabled={!canAddRoleBlocker} onClick={() => setRoleCodes([...roleCodes, roles[0].code])}><Plus size={16} />הוסף תפקיד</button>
         </div>
         <input value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="סיבה / הערה" />
       </div>

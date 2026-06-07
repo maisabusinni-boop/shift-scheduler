@@ -26,6 +26,14 @@ export const exclusionRoles: Role[] = roles
   .filter((role) => role.code !== ROLE_CODES.SENIOR_B && role.code !== ROLE_CODES.FRIDAY_MORNING_SENIOR)
   .map((role) => role.code === ROLE_CODES.SENIOR_A ? { ...role, name: "כונן" } : role);
 
+export function exclusionRolesForDoctor(doctor: Doctor | null | undefined): Role[] {
+  if (!doctor) return [];
+  const allowedCodes: RoleCode[] = doctor.group === "senior"
+    ? [ROLE_CODES.SENIOR_A, ROLE_CODES.HALF_RESIDENT, ROLE_CODES.HALF_SENIOR]
+    : [ROLE_CODES.RESIDENT_ON_CALL, ROLE_CODES.HALF_RESIDENT, ROLE_CODES.HALF_SENIOR, ROLE_CODES.FRIDAY_MORNING_RESIDENT];
+  return exclusionRoles.filter((role) => allowedCodes.includes(role.code));
+}
+
 export const pendingLabels = ["ממתין", "טרם שובץ", "לא שובץ", "Pending"];
 
 export function createId(prefix: string) {
