@@ -63,7 +63,7 @@ import {
   findLikelyRegistrationMatches,
   rejectRegistrationRequest
 } from "@/registration";
-import { buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
+import { buildDutyDistribution, buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import {
   downloadCsv,
@@ -93,7 +93,7 @@ import type {
 import { validateSchedule } from "@/validation";
 import "./styles.css";
 
-type TabId = "published-roster" | "roster" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
+type TabId = "published-roster" | "roster" | "duty-distribution" | "exclusions" | "doctors" | "audit" | "drive" | "calendar" | "settings";
 type PublishedChangeMode = "handoff" | "exchange" | "auto-exchange";
 type AppliedPublishedChangeMode = Exclude<PublishedChangeMode, "auto-exchange">;
 type AdminViewRole = Exclude<AppRole, "admin">;
@@ -117,6 +117,7 @@ const LAST_SAVED_VERSION_KEY = "department-shift-scheduler.last-saved-version";
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
   { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
   { id: "roster", label: "טיוטת סידור", icon: Table2, draftPlanner: true },
+  { id: "duty-distribution", label: "חלוקת תורניות", icon: Table2 },
   { id: "exclusions", label: "אילוצים", icon: FileWarning },
   { id: "doctors", label: "רופאים ומשתמשים", icon: Users, plannerOnly: true },
   { id: "audit", label: "יומן פעולות", icon: History, audit: true },
@@ -1740,6 +1741,13 @@ export function App() {
               <LockedPanel title="השיבוץ עדיין טיוטה" text="מתמחים ובכירים רגילים יראו את החודש רק אחרי פרסום." />
             )
           )}
+          {tab === "duty-distribution" && (
+            <DutyDistributionPanel
+              schedule={schedule}
+              doctors={workspace.doctors}
+              days={days}
+            />
+          )}
           {tab === "exclusions" && (
             <Exclusions
               schedule={schedule}
@@ -2430,6 +2438,106 @@ function Roster({
         ownAssignmentDayKeys={scheduleView.ownAssignmentDayKeys}
         updateAssignment={updateAssignment}
       /> : null}
+    </section>
+  );
+}
+
+function DutyDistributionPanel({
+  schedule,
+  doctors,
+  days
+}: {
+  schedule: MonthSchedule;
+  doctors: Doctor[];
+  days: ReturnType<typeof buildMonthDays>;
+}) {
+  const distribution = useMemo(() => buildDutyDistribution(schedule, doctors, days), [days, doctors, schedule]);
+  const splitCount = (a: number, b: number) => `${a} / ${b}`;
+
+  return (
+    <section className="panel duty-distribution-panel">
+      <div className="toolbar roster-toolbar">
+        <div>
+          <h2>חלוקת תורניות</h2>
+          <span>{formatScheduleMonth(schedule)}</span>
+        </div>
+      </div>
+
+      <div className="duty-distribution-grid">
+        <section className="duty-distribution-section">
+          <div className="toolbar compact">
+            <h2>מתמחים</h2>
+            <span>{distribution.residents.length} רופאים פעילים</span>
+          </div>
+          <div className="board-wrap duty-distribution-wrap">
+            <table className="roster-table duty-distribution-table">
+              <thead>
+                <tr>
+                  <th className="sticky-date">שם</th>
+                  <th>תורנות חול</th>
+                  <th>תורנות חמישי</th>
+                  <th>תורנות שישי</th>
+                  <th>שישי בוקר</th>
+                  <th>תורנות שבת</th>
+                  <th>תורנות חצי חול</th>
+                  <th>תורנות חצי שבת</th>
+                </tr>
+              </thead>
+              <tbody>
+                {distribution.residents.map((row) => (
+                  <tr key={row.doctor.id}>
+                    <th className="sticky-date duty-doctor-name">{row.doctor.name}</th>
+                    <td>{row.weekdayOnCall}</td>
+                    <td>{row.thursdayOnCall}</td>
+                    <td>{row.fridayOnCall}</td>
+                    <td>{row.fridayMorning}</td>
+                    <td>{row.saturdayOnCall}</td>
+                    <td>{row.weekdayHalfDuty}</td>
+                    <td>{row.saturdayHalfDuty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="duty-distribution-section">
+          <div className="toolbar compact">
+            <h2>בכירים</h2>
+            <span>{distribution.seniors.length} רופאים פעילים</span>
+          </div>
+          <div className="board-wrap duty-distribution-wrap">
+            <table className="roster-table duty-distribution-table">
+              <thead>
+                <tr>
+                  <th className="sticky-date">שם</th>
+                  <th>תורנות חצי חול</th>
+                  <th>תורנות חצי שישי</th>
+                  <th>תורנות חצי שבת</th>
+                  <th>כונן א / ב חול</th>
+                  <th>כונן א חמישי</th>
+                  <th>כונן א / ב שישי</th>
+                  <th>כונן א / ב שבת</th>
+                </tr>
+              </thead>
+              <tbody>
+                {distribution.seniors.map((row) => (
+                  <tr key={row.doctor.id}>
+                    <th className="sticky-date duty-doctor-name">{row.doctor.name}</th>
+                    <td>{row.weekdayHalfDuty}</td>
+                    <td>{row.fridayHalfDuty}</td>
+                    <td>{row.saturdayHalfDuty}</td>
+                    <td>{splitCount(row.weekdaySeniorA, row.weekdaySeniorB)}</td>
+                    <td>{row.thursdaySeniorA}</td>
+                    <td>{splitCount(row.fridaySeniorA, row.fridaySeniorB)}</td>
+                    <td>{splitCount(row.saturdaySeniorA, row.saturdaySeniorB)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </section>
   );
 }

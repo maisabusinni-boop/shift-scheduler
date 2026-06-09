@@ -537,6 +537,39 @@ textarea {
   background: var(--panel);
 }
 
+.duty-distribution-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.duty-distribution-section {
+  min-width: 0;
+}
+
+.duty-distribution-wrap {
+  max-height: none;
+}
+
+.duty-distribution-table {
+  min-width: 1040px;
+}
+
+.duty-distribution-table th,
+.duty-distribution-table td {
+  text-align: center;
+}
+
+.duty-distribution-table td {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.duty-distribution-table .duty-doctor-name {
+  min-width: 180px;
+  text-align: right;
+  white-space: normal;
+}
+
 .mobile-roster-list {
   display: none;
 }
