@@ -65,6 +65,7 @@ import {
 } from "@/registration";
 import { buildDutyDistribution, buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
+import { generateAutoRoster } from "@/autoSchedule";
 import {
   downloadCsv,
   downloadJson,
@@ -651,112 +652,7 @@ export function App() {
     const activeDoctors = workspace.doctors.filter(d => d.active);
     if (activeDoctors.length === 0) return setMessage("אין רופאים פעילים במערכת. אנא הוסף או טען רופאים תחילה.");
     
-    const priorityRoles = [
-      ROLE_CODES.ANGIO,
-      ROLE_CODES.SENIOR_A,
-      ROLE_CODES.SENIOR_B,
-      ROLE_CODES.FRIDAY_MORNING_RESIDENT,
-      ROLE_CODES.RESIDENT_ON_CALL,
-      ROLE_CODES.HALF_SENIOR,
-      ROLE_CODES.HALF_RESIDENT
-    ];
-    
-    const newAssignments: Record<string, Assignment> = {};
-    const doctorAssignmentCounts: Record<string, number> = {};
-    activeDoctors.forEach(d => { doctorAssignmentCounts[d.id] = 0; });
-    
-    const roleByCode = new Map(workspace.roles.map(r => [r.code, r]));
-    const exclusionsSet = new Set<string>();
-    schedule.exclusions.forEach(ex => {
-      exclusionsSet.add(`${ex.date}|${ex.roleCode ?? "*"}|${ex.doctorId}`);
-    });
-    
-    function isAssignedOnDate(doctorId: string, dateStr: string) {
-      return Object.entries(newAssignments).some(([key, assignment]) => key.startsWith(`${dateStr}|`) && assignment.doctorId === doctorId);
-    }
-    
-    function getAssignedDoctor(dateStr: string, roleCode: RoleCode) {
-      const key = cellKey(dateStr, roleCode);
-      return newAssignments[key]?.doctorId || null;
-    }
-    
-    for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
-      const day = days[dayIndex];
-      const dateStr = day.key;
-      const weekday = new Date(`${dateStr}T00:00:00.000Z`).getUTCDay();
-      
-      for (const roleCode of priorityRoles) {
-        const role = roleByCode.get(roleCode);
-        if (!role) continue;
-        
-        if (isFridayOnlyRole(roleCode) && !day.allowsFridayRoles) continue;
-        
-        // Rule: Saturday half-senior must match Friday senior-a
-        if (roleCode === ROLE_CODES.HALF_SENIOR && weekday === 6) {
-          const prevFriday = previousDayKey(dateStr);
-          const fridaySeniorA = getAssignedDoctor(prevFriday, ROLE_CODES.SENIOR_A);
-          if (fridaySeniorA) {
-            const isExcluded = isDoctorExcluded(exclusionsSet, dateStr, roleCode, fridaySeniorA);
-            const alreadyAssigned = isAssignedOnDate(fridaySeniorA, dateStr);
-            if (!isExcluded && !alreadyAssigned) {
-              newAssignments[cellKey(dateStr, roleCode)] = { doctorId: fridaySeniorA, pending: false };
-              doctorAssignmentCounts[fridaySeniorA]++;
-              continue;
-            }
-          }
-        }
-        
-        // Find eligible doctors
-        let candidates = activeDoctors.filter(doc => {
-          if (!isDoctorEligibleForRole(doc, role)) return false;
-          if (isDoctorExcluded(exclusionsSet, dateStr, roleCode, doc.id)) return false;
-          if (isAssignedOnDate(doc.id, dateStr)) return false;
-          
-          const prevDate = previousDayKey(dateStr);
-          const prevAssignment = newAssignments[cellKey(prevDate, roleCode)];
-          if (prevAssignment?.doctorId === doc.id) {
-            if (roleCode === ROLE_CODES.RESIDENT_ON_CALL || roleCode === ROLE_CODES.HALF_SENIOR) return false;
-          }
-          
-          if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
-            const nextSaturday = nextDayKey(dateStr);
-            const satExcluded = isDoctorExcluded(exclusionsSet, nextSaturday, ROLE_CODES.HALF_SENIOR, doc.id);
-            if (satExcluded) return false;
-          }
-          
-          return true;
-        });
-        
-        if (candidates.length === 0) {
-          candidates = activeDoctors.filter(doc => {
-            if (!isDoctorEligibleForRole(doc, role)) return false;
-            if (isDoctorExcluded(exclusionsSet, dateStr, roleCode, doc.id)) return false;
-            if (isAssignedOnDate(doc.id, dateStr)) return false;
-            return true;
-          });
-        }
-        
-        if (candidates.length > 0) {
-          candidates.sort((a, b) => {
-            const countA = doctorAssignmentCounts[a.id];
-            const countB = doctorAssignmentCounts[b.id];
-            if (countA !== countB) return countA - countB;
-            return Math.random() - 0.5;
-          });
-          
-          const chosen = candidates[0];
-          newAssignments[cellKey(dateStr, roleCode)] = { doctorId: chosen.id, pending: false };
-          doctorAssignmentCounts[chosen.id]++;
-          
-          if (roleCode === ROLE_CODES.SENIOR_A && weekday === 5) {
-            const nextSaturday = nextDayKey(dateStr);
-            newAssignments[cellKey(dateStr, ROLE_CODES.FRIDAY_MORNING_SENIOR)] = { doctorId: chosen.id, pending: false };
-            newAssignments[cellKey(nextSaturday, ROLE_CODES.HALF_SENIOR)] = { doctorId: chosen.id, pending: false };
-            doctorAssignmentCounts[chosen.id]++;
-          }
-        }
-      }
-    }
+    const newAssignments = generateAutoRoster(schedule, workspace.roles, workspace.doctors, days);
     
     commitChange({
       mutator: (draft, currentSchedule) => {
@@ -3603,8 +3499,8 @@ function Doctors({
                 </div>
               </div>
               {expanded ? (
-                <div className="doctor-edit" onClick={(event) => event.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                <div className="doctor-edit" onClick={(event) => event.stopPropagation()}>
+                  <div className="doctor-edit-grid doctor-details-grid">
                     <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי רופא</h3>
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם מלא של הרופא
                       <input value={drName} onChange={(event) => setNameDrafts({ ...nameDrafts, [doctor.id]: event.target.value })} placeholder="שם רופא" />
@@ -3617,7 +3513,7 @@ function Doctors({
                     </label>
                   </div>
                   
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", borderTop: "1px dashed var(--line)", paddingTop: "12px" }}>
+                  <div className="doctor-edit-grid doctor-account-grid">
                     <h3 style={{ gridColumn: "1 / -1", margin: "0 0 -4px", fontSize: "14px", color: "var(--muted)" }}>פרטי כניסה והרשאות מערכת</h3>
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>שם משתמש
                       <input dir="ltr" value={username} onChange={(event) => setUsernameDrafts({ ...usernameDrafts, [doctor.id]: event.target.value })} placeholder="שם משתמש" />
@@ -3633,7 +3529,7 @@ function Doctors({
                     </label>
                   </div>
                   
-                  <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid var(--line)", paddingTop: "12px", marginTop: "4px" }}>
+                  <div className="doctor-edit-actions">
                     <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור שינויים</button>
                   </div>
                 </div>

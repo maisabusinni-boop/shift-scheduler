@@ -1488,17 +1488,49 @@ body.dark .registration-modal-panel {
 .doctor-edit {
   border-top: 1px solid var(--line);
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.35fr) auto;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 14px;
   padding-top: 14px;
 }
 
 .doctor-edit label {
-  align-items: center;
+  align-items: stretch;
   color: var(--muted);
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.doctor-edit input,
+.doctor-edit select {
+  min-width: 0;
+  width: 100%;
+}
+
+.doctor-edit h3 {
+  grid-column: 1 / -1;
+}
+
+.doctor-edit-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  min-width: 0;
+}
+
+.doctor-account-grid {
+  border-top: 1px dashed var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  padding-top: 12px;
+}
+
+.doctor-edit-actions {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+  padding-top: 12px;
 }
 
 @media (max-width: 950px) {
