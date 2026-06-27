@@ -65,7 +65,7 @@ import {
 } from "@/registration";
 import { buildDutyDistribution, buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
-import { generateAutoRoster } from "@/autoSchedule";
+import { autoScheduleRoleCodes, generateAutoRoster } from "@/autoSchedule";
 import {
   downloadCsv,
   downloadJson,
@@ -652,7 +652,9 @@ export function App() {
     const activeDoctors = workspace.doctors.filter(d => d.active);
     if (activeDoctors.length === 0) return setMessage("אין רופאים פעילים במערכת. אנא הוסף או טען רופאים תחילה.");
     
-    const newAssignments = generateAutoRoster(schedule, workspace.roles, workspace.doctors, days);
+    if (autoScheduleRoleCodes(role).length === 0) return setMessage("Automatic scheduling is available only in chief resident or senior planner mode.");
+
+    const newAssignments = generateAutoRoster(schedule, workspace.roles, workspace.doctors, days, { role });
     
     commitChange({
       mutator: (draft, currentSchedule) => {
