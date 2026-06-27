@@ -246,6 +246,7 @@ export function App() {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverWriteQueueRef = useRef(createServerWriteQueue());
   const explicitServerSaveRef = useRef(false);
+  const autosaveAbortRef = useRef<AbortController | null>(null);
 
   const key = monthKey(year, month);
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
@@ -345,6 +346,8 @@ export function App() {
 
   function beginExplicitServerSave() {
     explicitServerSaveRef.current = true;
+    autosaveAbortRef.current?.abort();
+    autosaveAbortRef.current = null;
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -409,6 +412,8 @@ export function App() {
       return;
     }
     const dataToSave = latestDataRef.current;
+    const autosaveController = options.checkRemote ? null : new AbortController();
+    if (autosaveController) autosaveAbortRef.current = autosaveController;
     setSyncState((current) => ({ ...current, isSavePending: false, isSaving: true, lastSaveError: null }));
     try {
       if (options.checkRemote) {
@@ -423,9 +428,13 @@ export function App() {
           }
         }
       }
-      const saved = await serverWriteQueueRef.current(() => saveWorkspace(dataToSave));
+      const saved = await serverWriteQueueRef.current(() => saveWorkspace(dataToSave, autosaveController?.signal));
       rememberServerSave(saved, dataToSave.updatedAt);
     } catch (err) {
+      if (autosaveController?.signal.aborted && explicitServerSaveRef.current) {
+        setSyncState((current) => ({ ...current, isSaving: false, isSavePending: true, lastSaveError: null }));
+        return;
+      }
       setSyncState((current) => ({
         ...current,
         isSaving: false,
@@ -434,6 +443,8 @@ export function App() {
         dirtySince: current.dirtySince ?? new Date().toISOString()
       }));
       throw err;
+    } finally {
+      if (autosaveAbortRef.current === autosaveController) autosaveAbortRef.current = null;
     }
   }
 

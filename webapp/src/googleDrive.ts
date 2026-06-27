@@ -44,7 +44,9 @@ export async function hashPassword(password: string): Promise<string> {
   return hashHex;
 }
 
-async function apiCall(action: string, extraPayload: Record<string, any> = {}): Promise<any> {
+const API_TIMEOUT_MS = 20_000;
+
+async function apiCall(action: string, extraPayload: Record<string, any> = {}, signal?: AbortSignal): Promise<any> {
   if (!webAppUrl) {
     throw new Error("לא הוגדר URL לחיבור לשרת (Google Apps Script).");
   }
@@ -56,14 +58,34 @@ async function apiCall(action: string, extraPayload: Record<string, any> = {}): 
     ...extraPayload
   };
   
-  const response = await fetch(webAppUrl, {
-    method: "POST",
-    mode: "cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify(payload)
-  });
+  const requestController = new AbortController();
+  let timedOut = false;
+  const cancelRequest = () => requestController.abort();
+  if (signal?.aborted) cancelRequest();
+  else signal?.addEventListener("abort", cancelRequest, { once: true });
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    requestController.abort();
+  }, API_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(webAppUrl, {
+      method: "POST",
+      mode: "cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(payload),
+      signal: requestController.signal
+    });
+  } catch (error) {
+    if (timedOut) throw new Error("השרת לא הגיב בזמן. נסו לשמור שוב.");
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", cancelRequest);
+  }
   
   if (!response.ok) {
     throw new Error(`שגיאת שרת: ${response.statusText} (${response.status})`);
@@ -135,8 +157,8 @@ export async function loadWorkspace(): Promise<WorkspaceData> {
   return data;
 }
 
-export async function saveWorkspace(data: WorkspaceData): Promise<WorkspaceData> {
-  const result = await apiCall("save", { data });
+export async function saveWorkspace(data: WorkspaceData, signal?: AbortSignal): Promise<WorkspaceData> {
+  const result = await apiCall("save", { data }, signal);
   const saved = migrateWorkspace(result.data);
   saved.driveSync.webAppUrl = webAppUrl;
   saved.driveSync.username = loggedInUsername;
