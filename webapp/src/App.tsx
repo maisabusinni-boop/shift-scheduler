@@ -67,6 +67,7 @@ import { buildDutyDistribution, buildScheduleView, currentWeekIndexForSchedule, 
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import { autoScheduleRoleCodes, generateAutoRoster } from "@/autoSchedule";
 import { createServerWriteQueue } from "@/serverWriteQueue";
+import { resolveDoctorAccountRole } from "@/doctorAccount";
 import {
   downloadCsv,
   downloadJson,
@@ -218,6 +219,7 @@ export function App() {
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
   const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
   const [savingDoctorId, setSavingDoctorId] = useState<string | null>(null);
+  const [doctorSaveErrors, setDoctorSaveErrors] = useState<Record<string, string>>({});
   const [doctorUsernameDrafts, setDoctorUsernameDrafts] = useState<Record<string, string>>({});
   const [doctorEmailDrafts, setDoctorEmailDrafts] = useState<Record<string, string>>({});
   const [doctorPasswordDrafts, setDoctorPasswordDrafts] = useState<Record<string, string>>({});
@@ -888,12 +890,19 @@ export function App() {
   }
 
   async function saveDoctorUser(doctorId: string) {
-    if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לנהל משתמשים.");
+    const rejectSave = (error: string) => {
+      setDoctorSaveErrors((current) => ({ ...current, [doctorId]: error }));
+      setMessage(error);
+    };
+    const clearSaveError = () => {
+      setDoctorSaveErrors(({ [doctorId]: _removed, ...rest }) => rest);
+    };
+    if (!canManageUsers(role)) return rejectSave("רק מתכנן בכיר יכול לנהל משתמשים.");
     const doctor = workspace.doctors.find((candidate) => candidate.id === doctorId);
-    if (!doctor) return setMessage("הרופא לא נמצא.");
+    if (!doctor) return rejectSave("הרופא לא נמצא.");
     
     const newName = (doctorNameDrafts[doctorId] ?? doctor.name).trim();
-    if (!newName) return setMessage("שם הרופא לא יכול להיות ריק.");
+    if (!newName) return rejectSave("שם הרופא לא יכול להיות ריק.");
     const newGroup = doctorGroupDrafts[doctorId] ?? doctor.group;
     const newCanAngio = doctorAngioDrafts[doctorId] ?? doctor.canAngio;
     
@@ -901,7 +910,7 @@ export function App() {
     const username = (doctorUsernameDrafts[doctorId] ?? existing?.username ?? "").trim().toLowerCase();
     const calendarEmailInput = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
     const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
-    const appRole = doctorRoleDrafts[doctorId] ?? (newGroup === "senior" ? "senior" : "resident");
+    const appRole = resolveDoctorAccountRole(doctorRoleDrafts[doctorId], existing?.role, newGroup);
     const hasAccountDraft = Boolean(
       doctorUsernameDrafts[doctorId]?.trim()
       || doctorEmailDrafts[doctorId]?.trim()
@@ -912,6 +921,7 @@ export function App() {
     // A doctor profile does not require a login account. Account validation only
     // applies after an account exists or the planner starts entering account data.
     if (!existing && !hasAccountDraft) {
+      clearSaveError();
       beginExplicitServerSave();
       commitChange({
         mutator: (draft) => {
@@ -936,17 +946,18 @@ export function App() {
         setDoctorGroupDrafts(({ [doctorId]: _removed, ...rest }) => rest);
         setDoctorAngioDrafts(({ [doctorId]: _removed, ...rest }) => rest);
       } catch (err) {
-        setMessage("שמירת פרטי הרופא לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+        rejectSave("שמירת פרטי הרופא לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         explicitServerSaveRef.current = false;
         setSavingDoctorId(null);
       }
       return;
     }
-    if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
-    if (!existing && !password) return setMessage("צריך להזין סיסמה ראשונית למשתמש חדש.");
+    if (!username && !existing) return rejectSave("כדי לשמור הרשאה במערכת צריך להזין שם משתמש.");
+    if (!existing && !password) return rejectSave("כדי לשמור הרשאה במערכת צריך להזין סיסמה ראשונית.");
     
-    if (calendarEmailInput && !normalizeCalendarRecipientEmail(calendarEmailInput)) return setMessage("Invalid Gmail address for calendar invitations.");
+    if (calendarEmailInput && !normalizeCalendarRecipientEmail(calendarEmailInput)) return rejectSave("Invalid Gmail address for calendar invitations.");
+    clearSaveError();
 
     let passwordHash = existing?.passwordHash || "";
     if (password) {
@@ -1024,7 +1035,7 @@ export function App() {
       setDoctorRoleDrafts(({ [doctorId]: _removed, ...rest }) => rest);
       setDoctorPasswordDrafts(({ [doctorId]: _removed, ...rest }) => rest);
     } catch (err) {
-      setMessage("שמירת פרטי המשתמש לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+      rejectSave("שמירת פרטי המשתמש לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       explicitServerSaveRef.current = false;
       setSavingDoctorId(null);
@@ -1752,6 +1763,7 @@ export function App() {
               expandedDoctorId={expandedDoctorId}
               setExpandedDoctorId={setExpandedDoctorId}
               savingDoctorId={savingDoctorId}
+              saveErrors={doctorSaveErrors}
               usernameDrafts={doctorUsernameDrafts}
               setUsernameDrafts={setDoctorUsernameDrafts}
               emailDrafts={doctorEmailDrafts}
@@ -3473,6 +3485,7 @@ function Doctors({
   expandedDoctorId,
   setExpandedDoctorId,
   savingDoctorId,
+  saveErrors,
   usernameDrafts,
   setUsernameDrafts,
   emailDrafts,
@@ -3504,6 +3517,7 @@ function Doctors({
   expandedDoctorId: string | null;
   setExpandedDoctorId: (value: string | null) => void;
   savingDoctorId: string | null;
+  saveErrors: Record<string, string>;
   usernameDrafts: Record<string, string>;
   setUsernameDrafts: (value: Record<string, string>) => void;
   emailDrafts: Record<string, string>;
@@ -3612,9 +3626,15 @@ function Doctors({
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>Calendar Gmail
                       <input dir="ltr" value={calendarEmail} onChange={(event) => setEmailDrafts({ ...emailDrafts, [doctor.id]: event.target.value })} placeholder="doctor@gmail.com" />
                     </label>
+                    {!linkedUser ? (
+                      <div className="doctor-account-note">
+                        אין לרופא חשבון מקושר. כדי לשמור הרשאה במערכת, יש להזין שם משתמש וסיסמה ראשונית.
+                      </div>
+                    ) : null}
                   </div>
                   
                   <div className="doctor-edit-actions">
+                    {saveErrors[doctor.id] ? <div className="doctor-save-error" role="alert">{saveErrors[doctor.id]}</div> : null}
                     <button className="primary" disabled={savingDoctorId !== null} onClick={() => saveDoctorUser(doctor.id)}>
                       {savingDoctorId === doctor.id ? "שומר..." : "שמור שינויים"}
                     </button>

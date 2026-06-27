@@ -1525,12 +1525,32 @@ body.dark .registration-modal-panel {
   padding-top: 12px;
 }
 
+.doctor-account-note {
+  background: color-mix(in srgb, #d97706 10%, transparent);
+  border: 1px solid color-mix(in srgb, #d97706 35%, var(--line));
+  color: var(--text);
+  font-size: 13px;
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
 .doctor-edit-actions {
+  align-items: center;
   border-top: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: flex-end;
   margin-top: 4px;
   padding-top: 12px;
+}
+
+.doctor-save-error {
+  color: #ef4444;
+  flex: 1 1 320px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 @media (max-width: 950px) {
