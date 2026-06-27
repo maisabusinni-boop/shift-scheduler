@@ -66,6 +66,7 @@ import {
 import { buildDutyDistribution, buildScheduleView, currentWeekIndexForSchedule, scheduleTodayKey, type ScheduleLens } from "@/scheduleView";
 import { addPublishSnapshot, cloneWorkspace, ensureSchedule } from "@/sampleData";
 import { autoScheduleRoleCodes, generateAutoRoster } from "@/autoSchedule";
+import { createServerWriteQueue } from "@/serverWriteQueue";
 import {
   downloadCsv,
   downloadJson,
@@ -243,6 +244,8 @@ export function App() {
   const lastSavedVersionRef = useRef<string | null>(localStorage.getItem(LAST_SAVED_VERSION_KEY));
   const latestDataRef = useRef<WorkspaceData>(data);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverWriteQueueRef = useRef(createServerWriteQueue());
+  const explicitServerSaveRef = useRef(false);
 
   const key = monthKey(year, month);
   const workspace = useMemo(() => ensureSchedule(data, year, month), [data, year, month]);
@@ -340,6 +343,14 @@ export function App() {
     };
   }
 
+  function beginExplicitServerSave() {
+    explicitServerSaveRef.current = true;
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+  }
+
   function commitChange(input: {
     mutator: (draft: WorkspaceData, schedule: MonthSchedule) => AuditInput | AuditInput[] | void;
     note?: string;
@@ -412,7 +423,7 @@ export function App() {
           }
         }
       }
-      const saved = await saveWorkspace(dataToSave);
+      const saved = await serverWriteQueueRef.current(() => saveWorkspace(dataToSave));
       rememberServerSave(saved, dataToSave.updatedAt);
     } catch (err) {
       setSyncState((current) => ({
@@ -461,6 +472,7 @@ export function App() {
   // Debounced autosave effect
   useEffect(() => {
     if (!data || !hasCredentials()) return;
+    if (explicitServerSaveRef.current) return;
     
     if (!lastSavedVersionRef.current) {
       lastSavedVersionRef.current = data.updatedAt;
@@ -889,6 +901,7 @@ export function App() {
     // A doctor profile does not require a login account. Account validation only
     // applies after an account exists or the planner starts entering account data.
     if (!existing && !hasAccountDraft) {
+      beginExplicitServerSave();
       commitChange({
         mutator: (draft) => {
           const target = draft.doctors.find((candidate) => candidate.id === doctorId);
@@ -902,11 +915,10 @@ export function App() {
       });
       setSavingDoctorId(doctorId);
       try {
-        const saved = await adminSaveUsers(
-          latestDataRef.current.users,
-          latestDataRef.current.doctors,
-          latestDataRef.current.registrationRequests
-        );
+        const usersToSave = latestDataRef.current.users;
+        const doctorsToSave = latestDataRef.current.doctors;
+        const requestsToSave = latestDataRef.current.registrationRequests;
+        const saved = await serverWriteQueueRef.current(() => adminSaveUsers(usersToSave, doctorsToSave, requestsToSave));
         setAndPersist(saved, true);
         setMessage("פרטי הרופא נשמרו.");
         setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
@@ -915,6 +927,7 @@ export function App() {
       } catch (err) {
         setMessage("שמירת פרטי הרופא לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
       } finally {
+        explicitServerSaveRef.current = false;
         setSavingDoctorId(null);
       }
       return;
@@ -930,6 +943,7 @@ export function App() {
     }
     
     const calendarEmail = normalizeCalendarRecipientEmail(calendarEmailInput) || `${username || existing?.username || newName}@local`;
+    beginExplicitServerSave();
     commitChange({
       mutator: (draft) => {
         const before = {
@@ -985,7 +999,10 @@ export function App() {
     });
     setSavingDoctorId(doctorId);
     try {
-      const saved = await adminSaveUsers(latestDataRef.current.users, latestDataRef.current.doctors, latestDataRef.current.registrationRequests);
+      const usersToSave = latestDataRef.current.users;
+      const doctorsToSave = latestDataRef.current.doctors;
+      const requestsToSave = latestDataRef.current.registrationRequests;
+      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(usersToSave, doctorsToSave, requestsToSave));
       setAndPersist(saved, true);
       setMessage("פרטי הרופא וחשבון המשתמש נשמרו.");
       setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
@@ -998,6 +1015,7 @@ export function App() {
     } catch (err) {
       setMessage("שמירת פרטי המשתמש לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
     } finally {
+      explicitServerSaveRef.current = false;
       setSavingDoctorId(null);
     }
   }
@@ -1011,7 +1029,7 @@ export function App() {
       const next = draft.mode === "merge"
         ? approveRegistrationAsMerge(workspace, { requestId, doctorId: draft.doctorId, decidedByUserId: appUser?.id ?? null })
         : approveRegistrationAsNew(workspace, { requestId, group: draft.group, role: draft.role, canAngio: draft.canAngio, decidedByUserId: appUser?.id ?? null });
-      const saved = await adminSaveUsers(next.users, next.doctors, next.registrationRequests);
+      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(next.users, next.doctors, next.registrationRequests));
       setAndPersist(saved, true);
       setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
       setMessage(draft.mode === "merge" ? "הבקשה אושרה והסיסמה עודכנה למשתמש הקיים." : "הבקשה אושרה ונוצר משתמש חדש.");
@@ -1024,7 +1042,7 @@ export function App() {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לדחות בקשות משתמש.");
     try {
       const next = rejectRegistrationRequest(workspace, requestId, appUser?.id ?? null);
-      const saved = await adminSaveUsers(next.users, next.doctors, next.registrationRequests);
+      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(next.users, next.doctors, next.registrationRequests));
       setAndPersist(saved, true);
       setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
       setMessage("הבקשה נדחתה.");
@@ -1048,8 +1066,8 @@ export function App() {
     setExpandedDoctorId((current) => (current === doctorId ? null : current));
     if (!hasCredentials()) return;
     try {
-      await saveWorkspace(draft);
-      const saved = await adminSaveUsers(draft.users, draft.doctors, draft.registrationRequests);
+      await serverWriteQueueRef.current(() => saveWorkspace(draft));
+      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(draft.users, draft.doctors, draft.registrationRequests));
       setAndPersist(saved, true);
     } catch (err) {
       setMessage("שמירת הסרת הגישה בשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
