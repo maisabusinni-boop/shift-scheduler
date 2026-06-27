@@ -216,6 +216,7 @@ export function App() {
   const [deviceId] = useState(() => loadDeviceId());
   const [doctorForm, setDoctorForm] = useState({ name: "", group: "resident" as Doctor["group"], canAngio: false });
   const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
+  const [savingDoctorId, setSavingDoctorId] = useState<string | null>(null);
   const [doctorUsernameDrafts, setDoctorUsernameDrafts] = useState<Record<string, string>>({});
   const [doctorEmailDrafts, setDoctorEmailDrafts] = useState<Record<string, string>>({});
   const [doctorPasswordDrafts, setDoctorPasswordDrafts] = useState<Record<string, string>>({});
@@ -878,6 +879,46 @@ export function App() {
     const calendarEmailInput = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
     const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
     const appRole = doctorRoleDrafts[doctorId] ?? (newGroup === "senior" ? "senior" : "resident");
+    const hasAccountDraft = Boolean(
+      doctorUsernameDrafts[doctorId]?.trim()
+      || doctorEmailDrafts[doctorId]?.trim()
+      || doctorPasswordDrafts[doctorId]?.trim()
+      || Object.prototype.hasOwnProperty.call(doctorRoleDrafts, doctorId)
+    );
+
+    // A doctor profile does not require a login account. Account validation only
+    // applies after an account exists or the planner starts entering account data.
+    if (!existing && !hasAccountDraft) {
+      commitChange({
+        mutator: (draft) => {
+          const target = draft.doctors.find((candidate) => candidate.id === doctorId);
+          if (!target) return;
+          const before = { ...target };
+          target.name = newName;
+          target.group = newGroup;
+          target.canAngio = newCanAngio;
+          return { action: "doctor-update", entityType: "doctor", entityId: doctorId, before, after: { ...target } };
+        }
+      });
+      setSavingDoctorId(doctorId);
+      try {
+        const saved = await adminSaveUsers(
+          latestDataRef.current.users,
+          latestDataRef.current.doctors,
+          latestDataRef.current.registrationRequests
+        );
+        setAndPersist(saved, true);
+        setMessage("פרטי הרופא נשמרו.");
+        setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+        setDoctorGroupDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+        setDoctorAngioDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      } catch (err) {
+        setMessage("שמירת פרטי הרופא לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        setSavingDoctorId(null);
+      }
+      return;
+    }
     if (!username && !existing) return setMessage("צריך להזין שם משתמש לרופא.");
     if (!existing && !password) return setMessage("צריך להזין סיסמה ראשונית למשתמש חדש.");
     
@@ -942,13 +983,23 @@ export function App() {
       },
       note: "פרטי הרופא והמשתמש עודכנו מקומית ויישמרו ברקע."
     });
+    setSavingDoctorId(doctorId);
     try {
       const saved = await adminSaveUsers(latestDataRef.current.users, latestDataRef.current.doctors, latestDataRef.current.registrationRequests);
       setAndPersist(saved, true);
+      setMessage("פרטי הרופא וחשבון המשתמש נשמרו.");
+      setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorGroupDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorAngioDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorUsernameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorEmailDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorRoleDrafts(({ [doctorId]: _removed, ...rest }) => rest);
+      setDoctorPasswordDrafts(({ [doctorId]: _removed, ...rest }) => rest);
     } catch (err) {
       setMessage("שמירת פרטי המשתמש לשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSavingDoctorId(null);
     }
-    setDoctorPasswordDrafts(prev => ({ ...prev, [doctorId]: "" }));
   }
 
   async function approvePendingRegistration(requestId: string) {
@@ -1671,6 +1722,7 @@ export function App() {
               setForm={setDoctorForm}
               expandedDoctorId={expandedDoctorId}
               setExpandedDoctorId={setExpandedDoctorId}
+              savingDoctorId={savingDoctorId}
               usernameDrafts={doctorUsernameDrafts}
               setUsernameDrafts={setDoctorUsernameDrafts}
               emailDrafts={doctorEmailDrafts}
@@ -3391,6 +3443,7 @@ function Doctors({
   setForm,
   expandedDoctorId,
   setExpandedDoctorId,
+  savingDoctorId,
   usernameDrafts,
   setUsernameDrafts,
   emailDrafts,
@@ -3421,6 +3474,7 @@ function Doctors({
   setForm: (value: { name: string; group: Doctor["group"]; canAngio: boolean }) => void;
   expandedDoctorId: string | null;
   setExpandedDoctorId: (value: string | null) => void;
+  savingDoctorId: string | null;
   usernameDrafts: Record<string, string>;
   setUsernameDrafts: (value: Record<string, string>) => void;
   emailDrafts: Record<string, string>;
@@ -3532,7 +3586,9 @@ function Doctors({
                   </div>
                   
                   <div className="doctor-edit-actions">
-                    <button className="primary" onClick={() => saveDoctorUser(doctor.id)}>שמור שינויים</button>
+                    <button className="primary" disabled={savingDoctorId !== null} onClick={() => saveDoctorUser(doctor.id)}>
+                      {savingDoctorId === doctor.id ? "שומר..." : "שמור שינויים"}
+                    </button>
                   </div>
                 </div>
               ) : null}
