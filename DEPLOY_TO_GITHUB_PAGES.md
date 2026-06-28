@@ -89,4 +89,7 @@ Use **צור קובץ** to create the shared `department-shift-scheduler.json` f
 - User roles are practical app-level permissions based on Google email. They are not backend-grade security rules.
 - Every meaningful edit is written to the app audit log with user, time, device, before, and after data.
 - GitHub Pages hosts only static app files. It does not see schedule data.
-- Google Calendar sync is currently dry-run/mock-ready in the app and can be wired to real Calendar writes later.
+- Google Calendar sync runs through the Apps Script queue after the one-minute trigger is installed.
+- The current backend requires API v2 mutation commands; legacy full-workspace saves are rejected after cutover.
+- Deploy the frontend before or together with the matching `Code.gs`, then run `installCalendarSyncTrigger` once in Apps Script.
+- Run `createDatabaseBackup` before replacing the production Apps Script deployment.

@@ -126,7 +126,7 @@ describe("calendar migration defaults", () => {
     const migrated = migrateWorkspace(data);
 
     expect(migrated.users.find((user) => user.email === "planner@local")?.username).toBe("planner");
-    expect(migrated.users.find((user) => user.username === "admin")?.role).toBe("admin");
+    expect(migrated.users.find((user) => user.username === "admin")).toBeUndefined();
     expect(migrated.calendar.syncRecords[assignmentKey].attendeeEmails).toEqual([]);
   });
 });

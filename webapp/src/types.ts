@@ -56,7 +56,7 @@ export type RegistrationRequest = {
   doctorName: string;
   gmail: string;
   username: string;
-  passwordHash: string;
+  passwordHash?: string;
   status: RegistrationRequestStatus;
   createdAt: string;
   decidedAt: string | null;
@@ -150,6 +150,7 @@ export type AuditEntityType =
 
 export type AuditEntry = {
   id: string;
+  mutationId?: string;
   timestamp: string;
   displayTime: string;
   actorEmail: string;
@@ -196,6 +197,7 @@ export type PublishedChangeDetails = {
 };
 
 export type MonthSchedule = {
+  revision: number;
   key: string;
   year: number;
   month: number;
@@ -224,7 +226,8 @@ export type DriveSyncState = {
 };
 
 export type WorkspaceData = {
-  schemaVersion: 2;
+  schemaVersion: 3;
+  revision: number;
   workspace: {
     name: string;
     timezone: string;
@@ -242,9 +245,40 @@ export type WorkspaceData = {
     calendarId: string;
     syncRecords: Record<string, CalendarSyncRecord>;
     lastDryRun: CalendarPreviewEvent[];
+    syncPending: boolean;
+    requestedRevision: number | null;
+    lastCompletedRevision: number | null;
+    lastSyncAt: string | null;
+    lastSyncError: string | null;
   };
   driveSync: DriveSyncState;
   updatedAt: string;
+};
+
+export type MutationResultStatus = "applied" | "duplicate" | "conflict" | "rejected";
+
+export type MutationCommand = {
+  id: string;
+  type: string;
+  createdAt: string;
+  payload: Record<string, unknown>;
+  expected?: unknown;
+};
+
+export type MutationResult = {
+  id: string;
+  status: MutationResultStatus;
+  errorCode?: string;
+  message?: string;
+};
+
+export type MutationResponse = {
+  success: true;
+  apiVersion: 2;
+  revision: number;
+  data: WorkspaceData;
+  calendarSyncPending: boolean;
+  results: MutationResult[];
 };
 
 export type CalendarPreviewEvent = {

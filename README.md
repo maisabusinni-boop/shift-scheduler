@@ -73,6 +73,22 @@ This runs typecheck, tests, and the production build.
 - Apps Script preserves server-side user credentials when saving workspace data.
 - Calendar sync runs server-side for planner/chief saves when a calendar ID is configured.
 
+## Concurrent-use backend
+
+The production workspace schema is version 3. Browser edits are sent as small, idempotent mutation batches rather than replacing the complete Drive JSON file. Apps Script locks only the short read/validate/write section, rejects stale changes to the same target, and accepts unrelated changes in the same batch. Login and load requests are lock-free.
+
+Before deploying the v2 backend API:
+
+1. Run `createDatabaseBackup` once in the Apps Script editor and retain the returned Drive file ID.
+2. Deploy the current `Code.gs` as a new Web App version.
+3. Run `installCalendarSyncTrigger` once as the script owner; confirm exactly one one-minute trigger exists.
+4. Leave the `ALLOW_LEGACY_WRITES` Script Property absent or set to `false` so stale PWAs cannot replace the workspace.
+5. Set `ALLOW_TEST_DATA=true` only in a non-production deployment if the test-data command is needed.
+
+Calendar synchronization is marked pending by relevant mutations and runs outside the database lock. The browser makes a best-effort kick after a save, while the one-minute trigger provides recovery and retries.
+
+There is no built-in `admin` login. The first bootstrap user is the senior planner. For owner recovery, set temporary `RECOVERY_USERNAME` and `RECOVERY_PASSWORD_HASH` Script Properties, run `recoverSeniorPlannerPassword`, and confirm that the function removed both temporary properties.
+
 ## Validation Rules
 
 - `תורן`: residents only.

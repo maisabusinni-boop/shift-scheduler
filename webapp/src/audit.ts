@@ -10,6 +10,7 @@ export type ActorContext = {
 };
 
 export type AuditInput = {
+  mutationId?: string;
   action: string;
   entityType: AuditEntityType;
   entityId: string;
@@ -41,6 +42,7 @@ export function createAuditEntry(actor: ActorContext, input: AuditInput): AuditE
   const timestamp = new Date().toISOString();
   return {
     id: createId("audit"),
+    mutationId: input.mutationId,
     timestamp,
     displayTime: new Date(timestamp).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }),
     actorEmail: actor.googleUser?.email ?? "local-demo",

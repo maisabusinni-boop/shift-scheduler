@@ -39,10 +39,14 @@ import {
   loadWorkspace,
   saveWorkspace,
   adminSaveUsers,
+  mutateWorkspace,
+  kickCalendarSync,
+  BackendError,
   clearLocalCredentials,
   getLocalCredentials
 } from "@/googleDrive";
 import { migrateWorkspace } from "@/migration";
+import { applyMutationLocally, createDirectMutation, mutationFromAudit } from "@/mutations";
 import { buildMonthDays, monthKey, nextDayKey, previousDayKey } from "@/month";
 import {
   canApplyRequest,
@@ -87,6 +91,7 @@ import type {
   Doctor,
   DoctorGroup,
   MonthSchedule,
+  MutationCommand,
   PublishedChangeDetails,
   RegistrationRequest,
   Role,
@@ -116,6 +121,17 @@ type SyncState = {
 };
 
 const LAST_SAVED_VERSION_KEY = "department-shift-scheduler.last-saved-version";
+const PENDING_MUTATIONS_KEY = "department-shift-scheduler.pending-mutations.v1";
+
+function readPendingMutations(): MutationCommand[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PENDING_MUTATIONS_KEY) ?? "null");
+    if (!parsed || parsed.backendUrl !== getWebAppUrl() || parsed.username !== getLocalCredentials().username) return [];
+    return Array.isArray(parsed.commands) ? parsed.commands : [];
+  } catch {
+    return [];
+  }
+}
 
 const tabs: Array<{ id: TabId; label: string; icon: ElementType; plannerOnly?: boolean; scheduleEditor?: boolean; requestReviewer?: boolean; audit?: boolean; draftPlanner?: boolean }> = [
   { id: "published-roster", label: "לוח תורנויות", icon: Table2, scheduleEditor: true },
@@ -247,6 +263,9 @@ export function App() {
   const latestDataRef = useRef<WorkspaceData>(data);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverWriteQueueRef = useRef(createServerWriteQueue());
+  const pendingMutationsRef = useRef<MutationCommand[]>(readPendingMutations());
+  const mutationFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mutationFlushPromiseRef = useRef<Promise<void> | null>(null);
   const explicitServerSaveRef = useRef(false);
   const autosaveAbortRef = useRef<AbortController | null>(null);
 
@@ -287,9 +306,17 @@ export function App() {
 
   useEffect(() => {
     if (workspace !== data) {
-      setAndPersist(workspace);
+      setAndPersist(workspace, !canEditDraftRoster(role));
+      if (hasCredentials() && canEditDraftRoster(role)) {
+        enqueueMutations([createDirectMutation("schedule-create", {
+          entityType: "schedule",
+          entityId: key,
+          scheduleKey: key,
+          schedule: workspace.schedules[key]
+        }, null)], true);
+      }
     }
-  }, [workspace, data]);
+  }, [workspace, data, role, key]);
 
   useEffect(() => {
     latestDataRef.current = data;
@@ -356,6 +383,96 @@ export function App() {
     }
   }
 
+  function persistPendingMutations() {
+    localStorage.setItem(PENDING_MUTATIONS_KEY, JSON.stringify({
+      backendUrl: getWebAppUrl(),
+      username: getLocalCredentials().username,
+      commands: pendingMutationsRef.current
+    }));
+  }
+
+  function scheduleMutationFlush(delay = 750) {
+    if (!hasCredentials()) return;
+    if (mutationFlushTimeoutRef.current) clearTimeout(mutationFlushTimeoutRef.current);
+    mutationFlushTimeoutRef.current = setTimeout(() => {
+      mutationFlushTimeoutRef.current = null;
+      void flushMutations().catch(() => undefined);
+    }, delay);
+  }
+
+  function enqueueMutations(commands: MutationCommand[], flushImmediately = false) {
+    if (!commands.length || !hasCredentials()) return;
+    pendingMutationsRef.current.push(...commands);
+    persistPendingMutations();
+    setSyncState((current) => ({
+      ...current,
+      isSavePending: true,
+      lastSaveError: null,
+      dirtySince: current.dirtySince ?? new Date().toISOString()
+    }));
+    scheduleMutationFlush(flushImmediately ? 0 : 750);
+  }
+
+  async function flushMutations() {
+    if (!hasCredentials() || pendingMutationsRef.current.length === 0) return;
+    if (mutationFlushPromiseRef.current) return mutationFlushPromiseRef.current;
+
+    const runFlush = async () => {
+      while (pendingMutationsRef.current.length > 0) {
+        const batch = pendingMutationsRef.current.slice(0, 50);
+        setSyncState((current) => ({ ...current, isSaving: true, isSavePending: true, lastSaveError: null }));
+        let response: Awaited<ReturnType<typeof mutateWorkspace>> | null = null;
+        let lastError: unknown = null;
+        const delays = [250, 500, 1000, 2000, 4000];
+        for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+          try {
+            response = await serverWriteQueueRef.current(() => mutateWorkspace(batch, deviceId));
+            break;
+          } catch (error) {
+            lastError = error;
+            const retryable = !(error instanceof BackendError) || error.retryable || error.code === "BUSY";
+            if (!retryable || attempt === delays.length) break;
+            const jitter = Math.floor(Math.random() * 150);
+            await new Promise((resolve) => setTimeout(resolve, delays[attempt] + jitter));
+          }
+        }
+
+        if (!response) {
+          const message = lastError instanceof Error ? lastError.message : String(lastError);
+          setSyncState((current) => ({ ...current, isSaving: false, isSavePending: true, lastSaveError: message }));
+          throw lastError;
+        }
+
+        const completed = new Set(response.results.map((result) => result.id));
+        const conflicts = response.results.filter((result) => result.status === "conflict" || result.status === "rejected");
+        pendingMutationsRef.current = pendingMutationsRef.current.filter((command) => !completed.has(command.id));
+        persistPendingMutations();
+
+        let rebased = response.data;
+        for (const pending of pendingMutationsRef.current) rebased = applyMutationLocally(rebased, pending);
+        latestDataRef.current = rebased;
+        saveLocalWorkspace(rebased);
+        setData(rebased);
+        lastSavedVersionRef.current = response.data.updatedAt;
+        localStorage.setItem(LAST_SAVED_VERSION_KEY, response.data.updatedAt);
+        setSyncState({
+          lastSavedAt: new Date().toISOString(),
+          lastSaveError: conflicts.length ? conflicts.map((item) => item.message).filter(Boolean).join(" ") || "שינוי אחר כבר עדכן את אותו פריט." : null,
+          isSavePending: pendingMutationsRef.current.length > 0,
+          isSaving: false,
+          dirtySince: pendingMutationsRef.current.length ? new Date().toISOString() : null
+        });
+        if (conflicts.length) setMessage("חלק מהשינויים התנגשו עם עדכון חדש מהשרת. הנתונים רועננו; יש לבדוק ולבצע שוב את השינוי שנדחה.");
+        if (response.calendarSyncPending) void kickCalendarSync().catch(() => undefined);
+      }
+    };
+
+    mutationFlushPromiseRef.current = runFlush().finally(() => {
+      mutationFlushPromiseRef.current = null;
+    });
+    return mutationFlushPromiseRef.current;
+  }
+
   function commitChange(input: {
     mutator: (draft: WorkspaceData, schedule: MonthSchedule) => AuditInput | AuditInput[] | void;
     note?: string;
@@ -364,11 +481,19 @@ export function App() {
     const draft = ensureSchedule(cloneWorkspace(data), year, month);
     const audits = input.mutator(draft, draft.schedules[key]);
     draft.updatedAt = new Date().toISOString();
-    if (!input.system) {
-      const entries = Array.isArray(audits) ? audits : audits ? [audits] : [];
-      draft.auditLog.unshift(...entries.map((entry) => createAuditEntry(actorFor(draft), entry)));
-    }
+    const entries = Array.isArray(audits) ? audits : audits ? [audits] : [];
+    const commands = entries.map((entry) => mutationFromAudit(entry, draft));
+    commands.forEach((command) => {
+      const scheduleKey = command.payload.scheduleKey as string | undefined;
+      const targetSchedule = scheduleKey ? draft.schedules[scheduleKey] : undefined;
+      if (!targetSchedule) return;
+      command.payload.expectedScheduleRevision = targetSchedule.revision;
+      targetSchedule.revision += 1;
+    });
+    draft.revision += commands.length;
+    if (!input.system) draft.auditLog.unshift(...entries.map((entry, index) => createAuditEntry(actorFor(draft), { ...entry, mutationId: commands[index]?.id })));
     setAndPersist(draft);
+    enqueueMutations(commands);
     if (input.note) setMessage(input.note);
   }
 
@@ -408,7 +533,7 @@ export function App() {
     setAndPersist(saved, true);
   }
 
-  async function saveCurrentWorkspaceToServer(options: { checkRemote?: boolean } = {}) {
+  async function legacySaveCurrentWorkspaceToServer(options: { checkRemote?: boolean } = {}) {
     if (!hasCredentials()) {
       setSyncState((current) => ({ ...current, isSavePending: false, isSaving: false }));
       return;
@@ -450,6 +575,10 @@ export function App() {
     }
   }
 
+  async function saveCurrentWorkspaceToServer(_options: { checkRemote?: boolean } = {}) {
+    await flushMutations();
+  }
+
   async function retrySave() {
     try {
       await saveCurrentWorkspaceToServer({ checkRemote: true });
@@ -466,18 +595,21 @@ export function App() {
       if (!confirmed) return;
     }
     await run(async () => {
-      const loaded = await loadWorkspace();
-      setAndPersist(loaded, true);
+      let loaded = await loadWorkspace();
+      for (const pending of pendingMutationsRef.current) loaded = applyMutationLocally(loaded, pending);
+      setAndPersist(loaded, pendingMutationsRef.current.length === 0);
     }, "הנתונים רועננו מהשרת.");
   }
 
   useEffect(() => {
     if (hasCredentials()) {
       run(async () => {
-        const remoteData = await loadWorkspace();
+        let remoteData = await loadWorkspace();
+        for (const pending of pendingMutationsRef.current) remoteData = applyMutationLocally(remoteData, pending);
         lastSavedVersionRef.current = remoteData.updatedAt;
         localStorage.setItem(LAST_SAVED_VERSION_KEY, remoteData.updatedAt);
-        setAndPersist(remoteData, true);
+        setAndPersist(remoteData, pendingMutationsRef.current.length === 0);
+        if (pendingMutationsRef.current.length) scheduleMutationFlush(0);
       }, "הנתונים נטענו מחדש מהשרת.");
     }
   }, []);
@@ -517,6 +649,27 @@ export function App() {
   }, [data]);
 
   useEffect(() => {
+    const refresh = async () => {
+      if (!hasCredentials() || document.visibilityState !== "visible" || pendingMutationsRef.current.length) return;
+      try {
+        const remote = await loadWorkspace();
+        if (remote.revision > latestDataRef.current.revision) setAndPersist(remote, true);
+      } catch {
+        // Background refresh is best-effort.
+      }
+    };
+    const retryPending = () => scheduleMutationFlush(0);
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", retryPending);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", retryPending);
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentUser && data) {
       const match = data.users.find((u) => u.active && (u.username ?? "").toLowerCase() === currentUser.username.toLowerCase());
       if (match && match.name !== currentUser.name) {
@@ -535,10 +688,14 @@ export function App() {
     try {
       const passHash = await hashPassword(loginPassword);
       const appUser = await loginWithCredentials(loginUrl, loginUsername, passHash);
-      const loaded = await loadWorkspace();
-      lastSavedVersionRef.current = loaded.updatedAt;
-      localStorage.setItem(LAST_SAVED_VERSION_KEY, loaded.updatedAt);
-      setAndPersist(loaded, true);
+      let loaded = await loadWorkspace();
+      const serverUpdatedAt = loaded.updatedAt;
+      pendingMutationsRef.current = readPendingMutations();
+      for (const pending of pendingMutationsRef.current) loaded = applyMutationLocally(loaded, pending);
+      lastSavedVersionRef.current = serverUpdatedAt;
+      localStorage.setItem(LAST_SAVED_VERSION_KEY, serverUpdatedAt);
+      setAndPersist(loaded, pendingMutationsRef.current.length === 0);
+      if (pendingMutationsRef.current.length) scheduleMutationFlush(0);
       setCurrentUser({ username: loginUsername, name: appUser.name });
       setMessage("התחברת בהצלחה!");
     } catch (err) {
@@ -599,7 +756,7 @@ export function App() {
           ...data.registrationRequests.filter((request) => request.id !== result.request.id)
         ],
         updatedAt: new Date().toISOString()
-      });
+      }, true);
       setRegistrationForm({ doctorName: "", gmail: "", username: "", password: "" });
       setShowRegistrationModal(false);
       setMessage("הבקשה נשלחה למתכנן הבכיר לאישור.");
@@ -936,11 +1093,7 @@ export function App() {
       });
       setSavingDoctorId(doctorId);
       try {
-        const usersToSave = latestDataRef.current.users;
-        const doctorsToSave = latestDataRef.current.doctors;
-        const requestsToSave = latestDataRef.current.registrationRequests;
-        const saved = await serverWriteQueueRef.current(() => adminSaveUsers(usersToSave, doctorsToSave, requestsToSave));
-        setAndPersist(saved, true);
+        await flushMutations();
         setMessage("פרטי הרופא נשמרו.");
         setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
         setDoctorGroupDrafts(({ [doctorId]: _removed, ...rest }) => rest);
@@ -1021,11 +1174,7 @@ export function App() {
     });
     setSavingDoctorId(doctorId);
     try {
-      const usersToSave = latestDataRef.current.users;
-      const doctorsToSave = latestDataRef.current.doctors;
-      const requestsToSave = latestDataRef.current.registrationRequests;
-      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(usersToSave, doctorsToSave, requestsToSave));
-      setAndPersist(saved, true);
+      await flushMutations();
       setMessage("פרטי הרופא וחשבון המשתמש נשמרו.");
       setDoctorNameDrafts(({ [doctorId]: _removed, ...rest }) => rest);
       setDoctorGroupDrafts(({ [doctorId]: _removed, ...rest }) => rest);
@@ -1051,8 +1200,14 @@ export function App() {
       const next = draft.mode === "merge"
         ? approveRegistrationAsMerge(workspace, { requestId, doctorId: draft.doctorId, decidedByUserId: appUser?.id ?? null })
         : approveRegistrationAsNew(workspace, { requestId, group: draft.group, role: draft.role, canAngio: draft.canAngio, decidedByUserId: appUser?.id ?? null });
-      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(next.users, next.doctors, next.registrationRequests));
-      setAndPersist(saved, true);
+      const command = createDirectMutation(draft.mode === "merge" ? "registration-approve-merge" : "registration-approve-new", {
+        entityType: "user",
+        entityId: requestId,
+        after: { users: next.users, doctors: next.doctors, registrationRequests: next.registrationRequests }
+      }, { status: request.status });
+      setAndPersist(next);
+      enqueueMutations([command], true);
+      await flushMutations();
       setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
       setMessage(draft.mode === "merge" ? "הבקשה אושרה והסיסמה עודכנה למשתמש הקיים." : "הבקשה אושרה ונוצר משתמש חדש.");
     } catch (err) {
@@ -1064,8 +1219,14 @@ export function App() {
     if (!canManageUsers(role)) return setMessage("רק מתכנן בכיר יכול לדחות בקשות משתמש.");
     try {
       const next = rejectRegistrationRequest(workspace, requestId, appUser?.id ?? null);
-      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(next.users, next.doctors, next.registrationRequests));
-      setAndPersist(saved, true);
+      const command = createDirectMutation("registration-reject", {
+        entityType: "user",
+        entityId: requestId,
+        after: { users: next.users, doctors: next.doctors, registrationRequests: next.registrationRequests }
+      }, { status: "pending" });
+      setAndPersist(next);
+      enqueueMutations([command], true);
+      await flushMutations();
       setRegistrationApprovalDrafts(({ [requestId]: _removed, ...rest }) => rest);
       setMessage("הבקשה נדחתה.");
     } catch (err) {
@@ -1088,9 +1249,9 @@ export function App() {
     setExpandedDoctorId((current) => (current === doctorId ? null : current));
     if (!hasCredentials()) return;
     try {
-      await serverWriteQueueRef.current(() => saveWorkspace(draft));
-      const saved = await serverWriteQueueRef.current(() => adminSaveUsers(draft.users, draft.doctors, draft.registrationRequests));
-      setAndPersist(saved, true);
+      const command = createDirectMutation("doctor-remove", { entityType: "doctor", entityId: doctorId }, doctor);
+      enqueueMutations([command], true);
+      await flushMutations();
     } catch (err) {
       setMessage("שמירת הסרת הגישה בשרת נכשלה: " + (err instanceof Error ? err.message : String(err)));
     }
@@ -1169,7 +1330,7 @@ export function App() {
     });
   }
 
-  async function dryRunCalendar() {
+  async function legacyDryRunCalendar() {
     const preview = await buildCalendarPreview(schedule, workspace.roles, workspace);
     commitChange({
       mutator: (draft) => {
@@ -1179,6 +1340,27 @@ export function App() {
       },
       note: "תצוגת יומן נוצרה."
     });
+  }
+
+  async function dryRunCalendar() {
+    const preview = await buildCalendarPreview(schedule, workspace.roles, workspace);
+    const draft = cloneWorkspace(data);
+    const expected = { calendarInput: draft.calendar.calendarInput, calendarId: draft.calendar.calendarId };
+    draft.calendar = {
+      ...draft.calendar,
+      calendarInput,
+      calendarId: normalizeCalendarId(calendarInput),
+      lastDryRun: preview
+    };
+    saveLocalWorkspace(draft);
+    latestDataRef.current = draft;
+    setData(draft);
+    enqueueMutations([createDirectMutation("calendar-settings-save", {
+      entityType: "calendar",
+      entityId: "calendar",
+      calendar: { calendarInput: draft.calendar.calendarInput, calendarId: draft.calendar.calendarId }
+    }, expected)], true);
+    setMessage("תצוגת היומן נוצרה וההגדרות נשמרות בשרת.");
   }
 
   async function mockCalendarSync() {
@@ -1813,6 +1995,7 @@ export function App() {
                 try {
                   const parsed = migrateWorkspace(JSON.parse(importText));
                   setAndPersist(parsed);
+                  enqueueMutations([createDirectMutation("workspace-import", { entityType: "settings", entityId: "workspace", workspace: parsed }, data.revision)], true);
                   setMessage("קובץ JSON נטען.");
                 } catch {
                   setMessage("JSON לא תקין.");

@@ -1,5 +1,5 @@
 import { migrateWorkspace } from "@/migration";
-import type { WorkspaceData, AppUser, Doctor, RegistrationRequest } from "@/types";
+import type { WorkspaceData, AppUser, Doctor, RegistrationRequest, MutationCommand, MutationResponse } from "@/types";
 
 let webAppUrl = localStorage.getItem("department-shift-scheduler.webapp-url") || "https://script.google.com/macros/s/AKfycbzrLQhlCihebMkFfj0PeWdVUUsheh78UgmqdMkL8kPAvsJuTR5B8h9MkIS3Bc_tJEneNw/exec";
 let loggedInUsername = localStorage.getItem("department-shift-scheduler.username") || "";
@@ -45,6 +45,19 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 const API_TIMEOUT_MS = 20_000;
+
+export class BackendError extends Error {
+  constructor(
+    message: string,
+    readonly code = "SERVER_ERROR",
+    readonly retryable = false,
+    readonly details?: unknown,
+    readonly data?: WorkspaceData
+  ) {
+    super(message);
+    this.name = "BackendError";
+  }
+}
 
 async function apiCall(action: string, extraPayload: Record<string, any> = {}, signal?: AbortSignal): Promise<any> {
   if (!webAppUrl) {
@@ -97,7 +110,13 @@ async function apiCall(action: string, extraPayload: Record<string, any> = {}, s
     if (unsupportedPublicRegistration) {
       throw new Error("השרת עדיין לא תומך בבקשות משתמש חדש. צריך לפרוס מחדש את Code.gs ב-Google Apps Script ואז לנסות שוב.");
     }
-    throw new Error(result.error);
+    throw new BackendError(
+      typeof result.error === "string" ? result.error : result.error.message,
+      result.errorCode ?? result.error?.code,
+      Boolean(result.retryable ?? result.error?.retryable),
+      result.details ?? result.error?.details,
+      result.data ? migrateWorkspace(result.data) : undefined
+    );
   }
   
   return result;
@@ -165,11 +184,28 @@ export async function saveWorkspace(data: WorkspaceData, signal?: AbortSignal): 
   return saved;
 }
 
+export async function mutateWorkspace(mutations: MutationCommand[], deviceId: string, signal?: AbortSignal): Promise<MutationResponse> {
+  const result = await apiCall("mutate", { apiVersion: 2, deviceId, mutations }, signal);
+  return {
+    ...result,
+    data: migrateWorkspace(result.data)
+  } as MutationResponse;
+}
+
+export async function getBackendStatus() {
+  return apiCall("status", { apiVersion: 2 });
+}
+
+export async function kickCalendarSync() {
+  return apiCall("kick_calendar_sync", { apiVersion: 2 });
+}
+
 export async function submitRegistrationRequest(url: string, request: { doctorName: string; gmail: string; username: string; passwordHash: string }): Promise<{ request: RegistrationRequest }> {
   const prevUrl = webAppUrl;
   try {
     webAppUrl = url.trim();
-    const result = await apiCall("submit_registration_request", request);
+    const requestId = typeof crypto.randomUUID === "function" ? `reg-${crypto.randomUUID()}` : `reg-${Date.now()}`;
+    const result = await apiCall("submit_registration_request", { ...request, requestId });
     setWebAppUrl(url);
     return { request: result.request };
   } catch (err) {

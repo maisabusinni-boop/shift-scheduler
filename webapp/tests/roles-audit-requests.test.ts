@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { removeDoctorAndLinkedAccess } from "@/admin";
-import { ADMIN_PASSWORD_HASH, ensureAdminAccount } from "@/adminAccount";
 import { createAuditEntry, isAuditEntryVisibleForSchedule } from "@/audit";
 import { createBootstrapPlanner, resolveSession, type SessionUser } from "@/auth";
 import { ROLE_CODES } from "@/domain";
@@ -30,14 +29,9 @@ describe("Username role resolution", () => {
     expect(resolveSession(data, { username: "unknown", name: "Unknown" }).status).toBe("blocked");
   });
 
-  it("seeds and recognizes the fixed admin account", () => {
-    const data = ensureAdminAccount({ ...createSampleWorkspace(), users: [] });
-    const admin = data.users.find((user) => user.username === "admin");
-    expect(admin?.role).toBe("admin");
-    expect(admin?.passwordHash).toBe(ADMIN_PASSWORD_HASH);
-    const session = resolveSession(data, { username: "admin", name: "admin" });
-    expect(session.status).toBe("recognized");
-    expect(session.role).toBe("admin");
+  it("does not seed the retired fixed admin account", () => {
+    const data = createSampleWorkspace();
+    expect(data.users.some((user) => user.id === "user-admin" || user.username === "admin")).toBe(false);
   });
 
   it("allows recovery bootstrap if users exist but no active planner exists", () => {
@@ -295,7 +289,7 @@ describe("requests and audit", () => {
 });
 
 describe("migration", () => {
-  it("upgrades schema v1 workspaces to schema v2", () => {
+  it("upgrades schema v1 workspaces to schema v3 without a fixed admin", () => {
     const data = createSampleWorkspace();
     const legacy = { ...data, schemaVersion: 1 };
     delete (legacy as Partial<typeof data>).users;
@@ -304,8 +298,9 @@ describe("migration", () => {
     delete (legacy as Partial<typeof data>).auditLog;
 
     const migrated = migrateWorkspace(legacy);
-    expect(migrated.schemaVersion).toBe(2);
-    expect(migrated.users.some((user) => user.username === "admin" && user.role === "admin")).toBe(true);
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.revision).toBe(0);
+    expect(migrated.users.some((user) => user.username === "admin" && user.role === "admin")).toBe(false);
     expect(migrated.registrationRequests).toEqual([]);
     expect(migrated.changeRequests).toEqual([]);
     expect(migrated.auditLog).toEqual([]);
