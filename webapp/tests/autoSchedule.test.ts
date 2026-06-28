@@ -19,6 +19,21 @@ const doctors: Doctor[] = [
 ];
 
 describe("generateAutoRoster", () => {
+  it("exposes automatic scheduling to both planner roles", () => {
+    expect(autoScheduleRoleCodes("chief-resident")).toEqual([
+      ROLE_CODES.RESIDENT_ON_CALL,
+      ROLE_CODES.HALF_RESIDENT,
+      ROLE_CODES.FRIDAY_MORNING_RESIDENT
+    ]);
+    expect(autoScheduleRoleCodes("senior-planner")).toEqual([
+      ROLE_CODES.SENIOR_A,
+      ROLE_CODES.SENIOR_B,
+      ROLE_CODES.ANGIO,
+      ROLE_CODES.FRIDAY_MORNING_SENIOR,
+      ROLE_CODES.HALF_SENIOR
+    ]);
+  });
+
   it("keeps Friday senior-a, Friday morning senior, and Saturday half senior linked", () => {
     const schedule = createEmptySchedule(2026, 6);
     const days = buildMonthDays(2026, 6);

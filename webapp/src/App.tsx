@@ -2326,7 +2326,7 @@ function Roster({
           <span>{formatScheduleMonth(schedule)} · {editable ? "מצב עריכה" : "קריאה בלבד"} · {schedule.status === "published" ? <b className="locked-status">נעול</b> : "טיוטה"}</span>
         </div>
         <div className="actions">
-          {canUsePlannerTools(role) && editable && (
+          {autoScheduleRoleCodes(role).length > 0 && editable && (
             <button onClick={autoSchedule} style={{ background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af" }}>
               שיבוץ אוטומטי
             </button>
