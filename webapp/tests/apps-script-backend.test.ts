@@ -187,3 +187,58 @@ describe("Apps Script concurrency backend", () => {
     expect(harness.post({ action: "save", ...credentials, data: workspaceFixture() }).errorCode).toBe("UPGRADE_REQUIRED");
   });
 });
+
+
+describe("dummy four-role account workspace", () => {
+  const roles = ["senior-planner", "chief-resident", "senior", "resident"];
+  function fourUsers() {
+    const initial = workspaceFixture();
+    initial.users = roles.map((role, i) => ({ ...initial.users[0], id: `test-${i}`, username: `test-${role}`, role, doctorId: i ? `doctor-${i}` : null, passwordHash: `hash-${i}` }));
+    initial.doctors = roles.slice(1).map((role, i) => ({ id: `doctor-${i + 1}`, name: role, group: role === "senior" ? "senior" : "resident", active: true, canAngio: false }));
+    return initial;
+  }
+  it.each(roles)("logs in %s and enforces doctor management permissions", (role) => {
+    const initial = fourUsers();
+    const index = roles.indexOf(role);
+    const harness = createHarness(initial);
+    const auth = { username: ` TEST-${role.toUpperCase()} `, passwordHash: `hash-${index}` };
+    const login = harness.post({ action: "login", ...auth });
+    expect(login.user.role).toBe(role);
+    expect(login.data.users).toHaveLength(4);
+    expect(login.data.users.every((u: any) => !u.passwordHash)).toBe(true);
+    expect(harness.post({ action: "login", ...auth, passwordHash: "wrong" }).errorCode).toBe("AUTH_FAILED");
+    const result = harness.post({ action: "mutate", ...auth, mutations: [{ id: "create", type: "doctor-create", payload: { entityId: "new", after: { id: "new", name: "Dummy", group: "resident", active: true } } }] });
+    expect(result.results[0].status).toBe(role === "senior-planner" ? "applied" : "rejected");
+  });
+  it("recognizes a legacy username with surrounding spaces and rejects disabled accounts", () => {
+    const initial = workspaceFixture();
+    initial.users[0].username = " Planner ";
+    expect(createHarness(initial).post({ action: "login", ...credentials }).success).toBe(true);
+    initial.users[0].active = false;
+    expect(createHarness(initial).post({ action: "login", ...credentials }).errorCode).toBe("AUTH_FAILED");
+  });
+  it("preserves passwords on profile edits, resets them explicitly and rejects duplicate usernames", () => {
+    const initial = fourUsers();
+    const harness = createHarness(initial);
+    const edit = (id: string, user: any) => harness.post({ action: "mutate", username: "test-senior-planner", passwordHash: "hash-0", mutations: [{ id, type: "doctor-user-update", expected: { doctor: initial.doctors[0] }, payload: { entityId: "doctor-1", after: { doctor: initial.doctors[0], user } } }] });
+    const user = { ...initial.users[1], passwordHash: "" };
+    expect(edit("preserve", user).results[0].status).toBe("applied");
+    expect(harness.post({ action: "login", username: user.username, passwordHash: "hash-1" }).success).toBe(true);
+    expect(edit("reset", { ...user, passwordHash: "new-hash" }).results[0].status).toBe("applied");
+    expect(harness.post({ action: "login", username: user.username, passwordHash: "hash-1" }).errorCode).toBe("AUTH_FAILED");
+    expect(harness.post({ action: "login", username: user.username, passwordHash: "new-hash" }).success).toBe(true);
+    expect(edit("duplicate", { ...user, username: " TEST-SENIOR " }).results[0].errorCode).toBe("CONFLICT");
+    expect(harness.post({ action: "login", username: user.username, passwordHash: "new-hash" }).success).toBe(true);
+  });
+});
+
+
+it("rejects the reserved bootstrap username instead of creating an unusable account", () => {
+  const initial = workspaceFixture();
+  initial.users = [];
+  const harness = createHarness(initial);
+  expect(harness.post({ action: "bootstrap", username: " Admin ", passwordHash: "hash" }).errorCode).toBe("INVALID_COMMAND");
+  expect(harness.getWorkspace().users).toHaveLength(0);
+  expect(harness.post({ action: "bootstrap", username: " Planner ", passwordHash: "hash" }).success).toBe(true);
+  expect(harness.post({ action: "login", username: "planner", passwordHash: "hash" }).success).toBe(true);
+});

@@ -21,7 +21,7 @@ export function resolveSession(data: WorkspaceData, currentUser: SessionUser | n
   const username = normalizeUsername(currentUser.username);
 
   const appUser = data.users.find((user) => {
-    const uName = (user.username ?? (user.email ? user.email.split('@')[0] : user.id)).toLowerCase();
+    const uName = normalizeUsername(user.username || (user.email ? user.email.split("@")[0] : user.id));
     return uName === username && user.active;
   });
 

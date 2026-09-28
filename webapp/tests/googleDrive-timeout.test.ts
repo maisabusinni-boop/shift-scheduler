@@ -31,4 +31,19 @@ describe("Google Drive request timeout", () => {
 
     await rejection;
   });
+  it.each([true, false])("loads login data with bundled workspace=%s", async (bundled) => {
+    const { createSampleWorkspace } = await import("@/sampleData");
+    const data = createSampleWorkspace();
+    const user = { username: "tester", role: "resident" };
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ user, ...(bundled ? { data } : {}) }) });
+    if (!bundled) fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ data }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { loginAndLoadWorkspace, getLocalCredentials } = await import("@/googleDrive");
+    const result = await loginAndLoadWorkspace("https://example.test/exec", " Tester ", "hash");
+    expect(result.user).toEqual(user);
+    expect(result.data.schemaVersion).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(bundled ? 1 : 2);
+    expect(getLocalCredentials().username).toBe("tester");
+  });
+
 });

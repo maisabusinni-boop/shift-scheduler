@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { buildMonthDays, isFridayRoleAllowedDate } from "@/month";
+import { HebrewCalendar } from "@hebcal/core";
+import { describe, expect, it, vi } from "vitest";
+import { buildMonthDays, isFridayRoleAllowedDate, buildMajorIsraelHolidayMap } from "@/month";
 
 describe("Jewish holiday month days", () => {
   it("marks major Israel holidays in September 2026", () => {
@@ -27,4 +28,17 @@ describe("Jewish holiday month days", () => {
     expect(chanukahWeekday?.isJewishHoliday).toBe(false);
     expect(chanukahWeekday?.allowsFridayRoles).toBe(false);
   });
+});
+
+
+it("calculates holidays once per month and protects cached results", () => {
+  const calculate = vi.spyOn(HebrewCalendar, "calendar");
+  try {
+    const holidays = buildMajorIsraelHolidayMap(2031, 4);
+    const expected = new Map(holidays);
+    holidays.clear();
+    for (let day = 1; day <= 28; day++) isFridayRoleAllowedDate(`2031-04-${String(day).padStart(2, "0")}`);
+    expect(buildMajorIsraelHolidayMap(2031, 4)).toEqual(expected);
+    expect(calculate).toHaveBeenCalledTimes(1);
+  } finally { calculate.mockRestore(); }
 });

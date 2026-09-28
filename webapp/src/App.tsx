@@ -33,7 +33,7 @@ import {
   setWebAppUrl,
   hasCredentials,
   hashPassword,
-  loginWithCredentials,
+  loginAndLoadWorkspace,
   bootstrapPlanner,
   submitRegistrationRequest,
   loadWorkspace,
@@ -259,11 +259,13 @@ export function App() {
   } | null>(null);
   const [swapTargetDoctorId, setSwapTargetDoctorId] = useState("");
   const [swapReason, setSwapReason] = useState("");
-  const lastSavedVersionRef = useRef<string | null>(localStorage.getItem(LAST_SAVED_VERSION_KEY));
+  const [initialSavedVersion] = useState(() => localStorage.getItem(LAST_SAVED_VERSION_KEY));
+  const lastSavedVersionRef = useRef<string | null>(initialSavedVersion);
   const latestDataRef = useRef<WorkspaceData>(data);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serverWriteQueueRef = useRef(createServerWriteQueue());
-  const pendingMutationsRef = useRef<MutationCommand[]>(readPendingMutations());
+  const [initialPendingMutations] = useState(readPendingMutations);
+  const pendingMutationsRef = useRef<MutationCommand[]>(initialPendingMutations);
   const mutationFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mutationFlushPromiseRef = useRef<Promise<void> | null>(null);
   const explicitServerSaveRef = useRef(false);
@@ -464,6 +466,7 @@ export function App() {
         });
         if (conflicts.length) setMessage("חלק מהשינויים התנגשו עם עדכון חדש מהשרת. הנתונים רועננו; יש לבדוק ולבצע שוב את השינוי שנדחה.");
         if (response.calendarSyncPending) void kickCalendarSync().catch(() => undefined);
+        if (conflicts.length) throw new BackendError(conflicts.map((item) => item.message).filter(Boolean).join(" ") || "השינוי נדחה על ידי השרת.", "CONFLICT");
       }
     };
 
@@ -687,8 +690,9 @@ export function App() {
     setMessage("");
     try {
       const passHash = await hashPassword(loginPassword);
-      const appUser = await loginWithCredentials(loginUrl, loginUsername, passHash);
-      let loaded = await loadWorkspace();
+      const result = await loginAndLoadWorkspace(loginUrl, loginUsername, passHash);
+      const appUser = result.user;
+      let loaded = result.data;
       const serverUpdatedAt = loaded.updatedAt;
       pendingMutationsRef.current = readPendingMutations();
       for (const pending of pendingMutationsRef.current) loaded = applyMutationLocally(loaded, pending);
@@ -738,7 +742,7 @@ export function App() {
     const doctorName = registrationForm.doctorName.trim();
     const gmail = registrationForm.gmail.trim().toLowerCase();
     const username = registrationForm.username.trim().toLowerCase();
-    const password = registrationForm.password.trim();
+    const password = registrationForm.password;
     if (!doctorName) return setMessage("נא להזין שם רופא.");
     if (!username) return setMessage("נא להזין שם משתמש.");
     if (!password) return setMessage("נא להזין סיסמה.");
@@ -1065,8 +1069,8 @@ export function App() {
     
     const existing = workspace.users.find((user) => user.doctorId === doctorId);
     const username = (doctorUsernameDrafts[doctorId] ?? existing?.username ?? "").trim().toLowerCase();
-    const calendarEmailInput = (doctorEmailDrafts[doctorId] ?? existing?.email ?? "").trim().toLowerCase();
-    const password = (doctorPasswordDrafts[doctorId] ?? "").trim();
+    const calendarEmailInput = (doctorEmailDrafts[doctorId] ?? normalizeCalendarRecipientEmail(existing?.email ?? "")).trim().toLowerCase();
+    const password = doctorPasswordDrafts[doctorId] ?? "";
     const appRole = resolveDoctorAccountRole(doctorRoleDrafts[doctorId], existing?.role, newGroup);
     const hasAccountDraft = Boolean(
       doctorUsernameDrafts[doctorId]?.trim()
@@ -1106,7 +1110,10 @@ export function App() {
       }
       return;
     }
-    if (!username && !existing) return rejectSave("כדי לשמור הרשאה במערכת צריך להזין שם משתמש.");
+    if (!username) return rejectSave("כדי לשמור הרשאה במערכת צריך להזין שם משתמש.");
+    if (username === "admin" || workspace.users.some((user) => user.id !== existing?.id && (user.username || user.email.split("@")[0]).trim().toLowerCase() === username)) {
+      return rejectSave("שם המשתמש כבר בשימוש או שמור למערכת.");
+    }
     if (!existing && !password) return rejectSave("כדי לשמור הרשאה במערכת צריך להזין סיסמה ראשונית.");
     
     if (calendarEmailInput && !normalizeCalendarRecipientEmail(calendarEmailInput)) return rejectSave("Invalid Gmail address for calendar invitations.");
@@ -1743,7 +1750,7 @@ export function App() {
               <>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   שם משתמש מבוקש למנהל
-                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="לדוגמה: admin" />
+                  <input dir="ltr" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="לדוגמה: planner" />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   שם מלא של המנהל

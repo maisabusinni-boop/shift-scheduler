@@ -76,7 +76,12 @@ export function buildMonthDays(year: number, month: number): MonthDay[] {
   });
 }
 
+const holidayCache = new Map<string, Map<string, string>>();
+
 export function buildMajorIsraelHolidayMap(year: number, month: number) {
+  const cacheKey = monthKey(year, month);
+  const cached = holidayCache.get(cacheKey);
+  if (cached) return new Map(cached);
   const holidays = new Map<string, string>();
   const events = HebrewCalendar.calendar({
     year,
@@ -98,7 +103,9 @@ export function buildMajorIsraelHolidayMap(year: number, month: number) {
     holidays.set(key, existing ? `${existing}, ${name}` : name);
   }
 
-  return holidays;
+  if (holidayCache.size >= 36) holidayCache.delete(holidayCache.keys().next().value!);
+  holidayCache.set(cacheKey, holidays);
+  return new Map(holidays);
 }
 
 export function isFridayRoleAllowedDate(key: string) {

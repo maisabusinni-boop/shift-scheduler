@@ -123,6 +123,10 @@ async function apiCall(action: string, extraPayload: Record<string, any> = {}, s
 }
 
 export async function loginWithCredentials(url: string, username: string, passwordHash: string): Promise<AppUser> {
+  return (await loginAndLoadWorkspace(url, username, passwordHash)).user;
+}
+
+export async function loginAndLoadWorkspace(url: string, username: string, passwordHash: string): Promise<{ user: AppUser; data: WorkspaceData }> {
   const prevUrl = webAppUrl;
   const prevUser = loggedInUsername;
   const prevHash = loggedInPasswordHash;
@@ -134,9 +138,10 @@ export async function loginWithCredentials(url: string, username: string, passwo
     
     const result = await apiCall("login");
     
+    const data = result.data ? migrateWorkspace(result.data) : await loadWorkspace();
     setWebAppUrl(url);
     setLocalCredentials(username, passwordHash);
-    return result.user;
+    return { user: result.user, data };
   } catch (err) {
     webAppUrl = prevUrl;
     loggedInUsername = prevUser;

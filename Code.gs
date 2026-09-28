@@ -31,7 +31,7 @@ function doPost(e) {
     var user = authenticate_(workspace, request.username, request.passwordHash);
     if (!user) return errorResponse_("AUTH_FAILED", "Invalid username or password.", false);
 
-    if (action === "login") return makeResponse_({ success: true, apiVersion: API_VERSION, user: sanitizeUser_(user) });
+    if (action === "login") return makeResponse_({ success: true, apiVersion: API_VERSION, user: sanitizeUser_(user), data: sanitizedWorkspace_(workspace) });
     if (action === "load") return workspaceResponse_(workspace);
     if (action === "mutate") return mutateWorkspace_(request, user, startedAt);
     if (action === "save_snapshot") return saveSnapshot_(request);
@@ -372,18 +372,25 @@ function mergeCalendarState_(current, incoming) {
 function authenticate_(workspace, username, passwordHash) {
   var normalized = String(username || "").trim().toLowerCase();
   return (workspace.users || []).find(function(user) {
-    var candidate = String(user.username || (user.email ? user.email.split("@")[0] : "")).toLowerCase();
+    var candidate = normalizedUsername_(user);
     return user.active && candidate === normalized && user.passwordHash === passwordHash;
   }) || null;
 }
 
+function normalizedUsername_(user) {
+  return String(user.username || (user.email ? user.email.split("@")[0] : "")).trim().toLowerCase();
+}
+
 function upsertUserPreservingPassword_(workspace, incoming) {
   var index = workspace.users.findIndex(function(user) { return user.id === incoming.id || (incoming.doctorId && user.doctorId === incoming.doctorId); });
-  if (index < 0) { workspace.users.push(incoming); return; }
-  var current = workspace.users[index];
   var next = clone_(incoming);
-  if (!next.passwordHash) next.passwordHash = current.passwordHash;
-  workspace.users[index] = next;
+  next.username = normalizedUsername_(next);
+  require_(next.username && next.username !== "admin", "INVALID_COMMAND", "A non-reserved username is required.");
+  require_(!workspace.users.some(function(user, i) { return i !== index && normalizedUsername_(user) === next.username; }), "CONFLICT", "Username is already in use.");
+  if (!next.passwordHash && index >= 0) next.passwordHash = workspace.users[index].passwordHash;
+  require_(next.passwordHash, "INVALID_COMMAND", "An initial password is required.");
+  if (index < 0) workspace.users.push(next);
+  else workspace.users[index] = next;
 }
 
 function removeDoctor_(workspace, doctorId) {
@@ -473,7 +480,7 @@ function bootstrapPlanner_(request) {
     var hasManager = workspace.users.some(function(user) { return user.active && (user.role === "senior-planner" || user.role === "admin"); });
     require_(!hasManager, "FORBIDDEN", "A senior planner already exists.");
     var user = { id: "user-" + Utilities.getUuid(), username: String(request.username || "").trim().toLowerCase(), email: String(request.username || "").indexOf("@") >= 0 ? String(request.username).toLowerCase() : String(request.username).toLowerCase() + "@local", name: request.name || request.username, role: "senior-planner", doctorId: null, active: true, createdAt: new Date().toISOString(), passwordHash: request.passwordHash };
-    workspace.users.push(user); workspace.revision += 1; workspace.updatedAt = new Date().toISOString(); writeWorkspace_(workspace);
+    upsertUserPreservingPassword_(workspace, user); workspace.revision += 1; workspace.updatedAt = new Date().toISOString(); writeWorkspace_(workspace);
     return makeResponse_({ success: true, apiVersion: API_VERSION, user: sanitizeUser_(user), data: sanitizedWorkspace_(workspace) });
   } catch (err) { return errorResponse_(err.code || "INVALID_COMMAND", err.message || String(err), false); }
   finally { lock.releaseLock(); }
