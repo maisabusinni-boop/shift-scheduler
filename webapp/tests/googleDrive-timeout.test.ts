@@ -46,4 +46,29 @@ describe("Google Drive request timeout", () => {
     expect(getLocalCredentials().username).toBe("tester");
   });
 
+  it.each([
+    ["self password", "me", "applied", "planner", "new-hash", "new-hash"],
+    ["self username", "me", "applied", "renamed", "", "old-hash"],
+    ["other account", "other", "applied", "other", "new-hash", "old-hash"],
+    ["rejected edit", "me", "rejected", "renamed", "new-hash", "old-hash"],
+    ["duplicate retry", "me", "duplicate", "renamed", "new-hash", "old-hash"]
+  ])("keeps subsequent requests authenticated after %s", async (_label, targetId, status, username, passwordHash, expectedHash) => {
+    const { createSampleWorkspace } = await import("@/sampleData");
+    const data = createSampleWorkspace();
+    const selfAccepted = targetId === "me" && status === "applied";
+    data.users = [{ id: "me", username: selfAccepted ? username : "planner", name: "Planner", email: "planner@local", role: "senior-planner", active: true, doctorId: null, createdAt: "2026-01-01" }];
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ id: "edit", status }], data }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ data }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { setLocalCredentials, getLocalCredentials, mutateWorkspace, loadWorkspace } = await import("@/googleDrive");
+    setLocalCredentials("planner", "old-hash");
+    await mutateWorkspace([{ id: "edit", type: "doctor-user-update", createdAt: "2026-01-01", payload: { after: { user: { id: targetId, username, passwordHash } } } }], "test", undefined, "me");
+    await loadWorkspace();
+    const sent = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(sent.username).toBe(selfAccepted ? username : "planner");
+    expect(sent.passwordHash).toBe(expectedHash);
+    expect(getLocalCredentials()).toEqual({ username: sent.username, passwordHash: sent.passwordHash });
+    expect(storage.get("department-shift-scheduler.password-hash")).toBe(expectedHash);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).passwordHash).toBe("old-hash");
+  });
+
 });

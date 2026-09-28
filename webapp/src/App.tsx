@@ -428,7 +428,7 @@ export function App() {
         const delays = [250, 500, 1000, 2000, 4000];
         for (let attempt = 0; attempt <= delays.length; attempt += 1) {
           try {
-            response = await serverWriteQueueRef.current(() => mutateWorkspace(batch, deviceId));
+            response = await serverWriteQueueRef.current(() => mutateWorkspace(batch, deviceId, undefined, actualAppUser?.id));
             break;
           } catch (error) {
             lastError = error;
@@ -445,6 +445,8 @@ export function App() {
           throw lastError;
         }
 
+        const signedInUsername = getLocalCredentials().username;
+        setCurrentUser((current) => current ? { ...current, username: signedInUsername } : current);
         const completed = new Set(response.results.map((result) => result.id));
         const conflicts = response.results.filter((result) => result.status === "conflict" || result.status === "rejected");
         pendingMutationsRef.current = pendingMutationsRef.current.filter((command) => !completed.has(command.id));

@@ -111,7 +111,9 @@ async function apiCall(action: string, extraPayload: Record<string, any> = {}, s
       throw new Error("השרת עדיין לא תומך בבקשות משתמש חדש. צריך לפרוס מחדש את Code.gs ב-Google Apps Script ואז לנסות שוב.");
     }
     throw new BackendError(
-      typeof result.error === "string" ? result.error : result.error.message,
+      result.errorCode === "AUTH_FAILED" && action !== "login"
+        ? "פרטי ההתחברות השמורים אינם תקפים. יש להתנתק ולהתחבר מחדש עם שם המשתמש והסיסמה העדכניים של החשבון שלך, ואז לנסות שוב."
+        : typeof result.error === "string" ? result.error : result.error.message,
       result.errorCode ?? result.error?.code,
       Boolean(result.retryable ?? result.error?.retryable),
       result.details ?? result.error?.details,
@@ -189,8 +191,26 @@ export async function saveWorkspace(data: WorkspaceData, signal?: AbortSignal): 
   return saved;
 }
 
-export async function mutateWorkspace(mutations: MutationCommand[], deviceId: string, signal?: AbortSignal): Promise<MutationResponse> {
+export async function mutateWorkspace(mutations: MutationCommand[], deviceId: string, signal?: AbortSignal, authenticatedUserId?: string): Promise<MutationResponse> {
+  const credentials = getLocalCredentials();
   const result = await apiCall("mutate", { apiVersion: 2, deviceId, mutations }, signal);
+  // A self-edit invalidates the credentials that authenticated this batch.
+  // Rotate only after server acceptance, before another batch or Calendar kick.
+  if (authenticatedUserId && credentials.username === loggedInUsername && credentials.passwordHash === loggedInPasswordHash) {
+    let nextHash = credentials.passwordHash;
+    let changedSelf = false;
+    for (const mutation of mutations) {
+      if (!result.results.some((item: { id: string; status: string }) => item.id === mutation.id && item.status === "applied")) continue;
+      const after = mutation.payload.after as { user?: AppUser; users?: AppUser[] } | undefined;
+      const updated = after?.user?.id === authenticatedUserId ? after.user : after?.users?.find((user) => user.id === authenticatedUserId);
+      if (updated) {
+        changedSelf = true;
+        if (updated.passwordHash) nextHash = updated.passwordHash;
+      }
+    }
+    const savedUser = result.data.users.find((user: AppUser) => user.id === authenticatedUserId);
+    if (changedSelf && savedUser?.active) setLocalCredentials(savedUser.username, nextHash);
+  }
   return {
     ...result,
     data: migrateWorkspace(result.data)
