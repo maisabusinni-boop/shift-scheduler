@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 function workspaceFixture(): any {
@@ -73,9 +74,10 @@ function createHarness(initial = workspaceFixture()) {
       formatDate: () => "29/06/2026 12:00:00",
       base64Decode: () => [],
       newBlob: () => ({}),
-      computeDigest: () => [],
+      computeDigest: (_algorithm: string, value: string) => Array.from(createHash("sha256").update(value, "utf8").digest()).map((byte) => byte > 127 ? byte - 256 : byte),
       base64Encode: () => "hash",
-      DigestAlgorithm: { SHA_1: "sha1" }
+      DigestAlgorithm: { SHA_1: "sha1", SHA_256: "sha256" },
+      Charset: { UTF_8: "utf8" }
     },
     ScriptApp: {
       getProjectTriggers: () => [],
@@ -95,7 +97,12 @@ function createHarness(initial = workspaceFixture()) {
     post,
     getWorkspace: () => JSON.parse(database),
     getLockAttempts: () => lockAttempts,
-    runCalendarSync: () => (context.processCalendarSyncQueue as Function)()
+    runCalendarSync: () => (context.processCalendarSyncQueue as Function)(),
+    recoverAccounts: (input: Record<string, string>) => {
+      properties.set("RECOVERY_PASSWORDS_JSON", JSON.stringify(input));
+      return (context.recoverAccountPasswords as Function)();
+    },
+    hasRecoveryProperty: () => properties.has("RECOVERY_PASSWORDS_JSON")
   };
 }
 
@@ -241,4 +248,29 @@ it("rejects the reserved bootstrap username instead of creating an unusable acco
   expect(harness.getWorkspace().users).toHaveLength(0);
   expect(harness.post({ action: "bootstrap", username: " Planner ", passwordHash: "hash" }).success).toBe(true);
   expect(harness.post({ action: "login", username: "planner", passwordHash: "hash" }).success).toBe(true);
+});
+
+describe("owner account recovery", () => {
+  it("resets three accounts atomically and removes the temporary passwords", () => {
+    const initial = workspaceFixture();
+    initial.users.push(
+      { ...initial.users[0], id: "u-amad", username: "amad", role: "senior", passwordHash: "old-amad" },
+      { ...initial.users[0], id: "u-kanar", username: "kanar", role: "resident", passwordHash: "old-kanar" }
+    );
+    const harness = createHarness(initial);
+    const recovered = harness.recoverAccounts({ " Planner ": "space pass", amad: "other pass", KANAR: "שלישי" });
+    expect(Array.from(recovered)).toEqual(["planner", "amad", "kanar"]);
+    expect(harness.hasRecoveryProperty()).toBe(false);
+    for (const [username, password] of [["planner", "space pass"], ["amad", "other pass"], ["kanar", "שלישי"]]) {
+      const hash = createHash("sha256").update(password, "utf8").digest("hex");
+      expect(harness.post({ action: "login", username, passwordHash: hash }).success).toBe(true);
+    }
+  });
+
+  it("does not change any account if a username is missing", () => {
+    const harness = createHarness();
+    expect(() => harness.recoverAccounts({ planner: "new pass", missing: "also new" })).toThrow("Active account not found");
+    expect(harness.getWorkspace().users[0].passwordHash).toBe("secret-hash");
+    expect(harness.hasRecoveryProperty()).toBe(false);
+  });
 });

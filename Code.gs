@@ -550,6 +550,53 @@ function recoverSeniorPlannerPassword() {
   } finally { lock.releaseLock(); }
 }
 
+/** Owner-only recovery. Set RECOVERY_PASSWORDS_JSON in Script Properties to a
+ * JSON object of existing usernames and new plain-text passwords, then run
+ * this function from the Apps Script editor. The property is removed on every
+ * attempt so passwords do not remain in Script Properties. Never expose this
+ * function through doPost.
+ */
+function recoverAccountPasswords() {
+  var properties = PropertiesService.getScriptProperties();
+  var raw = properties.getProperty("RECOVERY_PASSWORDS_JSON");
+  if (!raw) throw new Error("Set RECOVERY_PASSWORDS_JSON first.");
+  var lock;
+  try {
+    var passwords = JSON.parse(raw);
+    if (!passwords || Array.isArray(passwords) || typeof passwords !== "object") throw new Error("Expected a JSON object of usernames and passwords.");
+    var usernames = Object.keys(passwords);
+    if (!usernames.length) throw new Error("At least one account is required.");
+    var replacements = usernames.map(function(username) {
+      var normalized = String(username).trim().toLowerCase();
+      var password = passwords[username];
+      if (!normalized || typeof password !== "string" || !password) throw new Error("Every account needs a username and a nonempty password.");
+      return { username: normalized, password: password };
+    });
+    if (replacements.some(function(item, index) {
+      return replacements.findIndex(function(other) { return other.username === item.username; }) !== index;
+    })) throw new Error("Duplicate usernames in recovery request.");
+
+    lock = LockService.getScriptLock();
+    lock.waitLock(5000);
+    var workspace = readWorkspace_();
+    var targets = replacements.map(function(item) {
+      var matches = workspace.users.filter(function(user) { return normalizedUsername_(user) === item.username; });
+      if (matches.length !== 1 || !matches[0].active) throw new Error("Active account not found: " + item.username);
+      return { user: matches[0], password: item.password };
+    });
+    targets.forEach(function(target) {
+      var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, target.password, Utilities.Charset.UTF_8);
+      target.user.passwordHash = digest.map(function(byte) { return (byte & 255).toString(16).padStart(2, "0"); }).join("");
+    });
+    workspace.updatedAt = new Date().toISOString();
+    writeWorkspace_(workspace);
+    return targets.map(function(target) { return target.user.username; });
+  } finally {
+    if (lock) lock.releaseLock();
+    properties.deleteProperty("RECOVERY_PASSWORDS_JSON");
+  }
+}
+
 function createDatabaseBackup() {
   var file = getDatabaseFile_();
   var stamp = Utilities.formatDate(new Date(), "Asia/Jerusalem", "yyyyMMdd-HHmmss");
